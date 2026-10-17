@@ -1,7 +1,7 @@
 // Caches only the app shell so it opens on a weak signal. API calls and uploads
 // always go to the network: a check-in must never be answered from a cache.
-const CACHE = "oncall-shell-v1";
-const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/icon.svg", "/logo.png"];
+const CACHE = "oncall-shell-v2";
+const SHELL = ["/", "/index.html", "/manifest.webmanifest", "/logo-white.png", "/icons/icon-192.png", "/icons/icon-512.png"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

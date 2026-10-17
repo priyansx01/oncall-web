@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { IoCameraReverseOutline, IoClose, IoImageOutline } from "react-icons/io5";
 
 // A plain photo — no face matching — with the place and time burned into it:
 // ON id + name, site, date/time (IST) and the GPS coordinates with accuracy.
@@ -38,68 +39,58 @@ export function stampPhoto(source: CanvasImageSource, w: number, h: number, line
   return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Couldn't save the photo"))), "image/jpeg", 0.85));
 }
 
-export function CameraSheet({
-  title,
-  stampLines,
-  onCancel,
-  onUse,
-  busy,
-}: {
-  title: string;
-  stampLines: string[];
-  onCancel: () => void;
-  onUse: (photo: Blob) => void;
-  busy: boolean;
-}) {
+/** Full-screen camera (the reference app's dark camera screen) — a guide frame, no face check. */
+export function CameraScreen({ title, stampLines, onCancel, onShot }: { title: string; stampLines: string[]; onCancel: () => void; onShot: (photo: Blob) => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [facing, setFacing] = useState<"user" | "environment">("user");
   const [error, setError] = useState<string | null>(null);
-  const [shot, setShot] = useState<{ blob: Blob; url: string } | null>(null);
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (shot) return;
     let cancelled = false;
     setError(null);
+    setReady(false);
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("This browser can't open the camera here — use “Phone camera”.");
+      return;
+    }
     navigator.mediaDevices
-      ?.getUserMedia({ video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false })
+      .getUserMedia({ video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false })
       .then((s) => {
         if (cancelled) return s.getTracks().forEach((t) => t.stop());
         stream.current = s;
         if (video.current) {
           video.current.srcObject = s;
-          void video.current.play().catch(() => undefined);
+          void video.current.play().then(() => !cancelled && setReady(true), () => undefined);
         }
       })
-      .catch(() => !cancelled && setError("The camera didn't open. Allow camera access for this site, or use “Take with phone camera”."));
-    if (!navigator.mediaDevices?.getUserMedia) setError("This browser can't open the camera here — use “Take with phone camera”.");
+      .catch(() => !cancelled && setError("The camera didn't open. Allow camera access for this site, or use “Phone camera”."));
     return () => {
       cancelled = true;
       stream.current?.getTracks().forEach((t) => t.stop());
       stream.current = null;
     };
-  }, [facing, shot]);
-
-  useEffect(() => {
-    return () => {
-      if (shot) URL.revokeObjectURL(shot.url);
-    };
-  }, [shot]);
+  }, [facing]);
 
   const capture = async () => {
     const v = video.current;
     if (!v || !v.videoWidth) return;
-    const blob = await stampPhoto(v, v.videoWidth, v.videoHeight, stampLines, facing === "user");
-    setShot({ blob, url: URL.createObjectURL(blob) });
+    setBusy(true);
+    try {
+      onShot(await stampPhoto(v, v.videoWidth, v.videoHeight, stampLines, facing === "user"));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const fromFile = async (f: File | undefined) => {
     if (!f) return;
     try {
       const bmp = await createImageBitmap(f);
-      const blob = await stampPhoto(bmp, bmp.width, bmp.height, stampLines, false);
-      setShot({ blob, url: URL.createObjectURL(blob) });
+      onShot(await stampPhoto(bmp, bmp.width, bmp.height, stampLines, false));
     } catch {
       setError("That photo couldn't be read — please take it again.");
     }
@@ -107,38 +98,29 @@ export function CameraSheet({
 
   return (
     <div className="camera">
-      <div className="camera-bar">
-        <button className="link light" onClick={onCancel} disabled={busy}>
-          Cancel
+      <div className="camera-top">
+        <button className="cam-icon" onClick={onCancel} aria-label="Close">
+          <IoClose size={24} />
         </button>
         <span>{title}</span>
-        {!shot ? (
-          <button className="link light" onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}>
-            Flip
-          </button>
-        ) : (
-          <span style={{ width: 44 }} />
-        )}
+        <button className="cam-icon" onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} aria-label="Switch camera">
+          <IoCameraReverseOutline size={24} />
+        </button>
       </div>
 
       <div className="camera-view">
-        {shot ? (
-          <img src={shot.url} alt="Your photo" />
-        ) : (
-          <video ref={video} playsInline muted className={facing === "user" ? "mirror" : ""} />
-        )}
-        {!shot && (
-          <div className="stamp-preview">
-            {stampLines.map((l, i) => (
-              <div key={i} className={i === 0 ? "b" : ""}>
-                {l}
-              </div>
-            ))}
-          </div>
-        )}
+        <video ref={video} playsInline muted className={facing === "user" ? "mirror" : ""} />
+        <div className="cam-frame" />
+        <div className="stamp-preview">
+          {stampLines.map((l, i) => (
+            <div key={i} className={i === 0 ? "b" : ""}>
+              {l}
+            </div>
+          ))}
+        </div>
       </div>
 
-      {error && <div className="camera-error">{error}</div>}
+      <p className="cam-hint">{error ?? (ready ? "Keep your face and the site in the frame" : "Opening camera…")}</p>
 
       <div className="camera-actions">
         <input
@@ -152,23 +134,12 @@ export function CameraSheet({
             e.target.value = "";
           }}
         />
-        {shot ? (
-          <>
-            <button className="btn ghost light" onClick={() => setShot(null)} disabled={busy}>
-              Retake
-            </button>
-            <button className="btn primary" onClick={() => onUse(shot.blob)} disabled={busy}>
-              {busy ? <span className="spin" /> : null} Use photo
-            </button>
-          </>
-        ) : (
-          <>
-            <button className="btn ghost light" onClick={() => fileInput.current?.click()}>
-              Take with phone camera
-            </button>
-            <button className="shutter" aria-label="Take photo" onClick={() => void capture()} disabled={!!error} />
-          </>
-        )}
+        <button className="cam-side" onClick={() => fileInput.current?.click()}>
+          <IoImageOutline size={22} />
+          <span>Phone camera</span>
+        </button>
+        <button className="shutter" aria-label="Take photo" onClick={() => void capture()} disabled={!ready || busy} />
+        <span className="cam-side" />
       </div>
     </div>
   );
