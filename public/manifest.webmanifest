@@ -1,0 +1,15 @@
+{
+  "name": "iSmart On-call",
+  "short_name": "On-call",
+  "description": "Check in and out at a site as an iSmart on-call reliever.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eff4f1",
+  "theme_color": "#003f2d",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/logo.png", "sizes": "381x324", "type": "image/png" }
+  ]
+}
