@@ -27,39 +27,22 @@ npm run build      # typecheck + production build in dist/
 ```
 Camera and location need HTTPS (or localhost).
 
-## Deploy (frontend VM, next to smartfm-frontend)
+## Deploy (frontend VM 10.30.7.7, next to smartfm-frontend)
 1. **DNS:** point `oncall.ismartfacitech.com` at the same address as `smartfm.ismartfacitech.com`.
-2. **TLS:** issue a certificate for `oncall.ismartfacitech.com` the same way as the smartfm one. It must end up under `/etc/letsencrypt/live/oncall.ismartfacitech.com/`.
-3. **Code:** clone this repo to `/opt/oncall-web`.
-4. **Compose:** add the service to `/opt/smartfm-frontend/docker-compose.yml`:
-   ```yaml
-     oncall:
-       image: oncall-web:latest
-       build:
-         context: /opt/oncall-web
-         network: host
-       restart: unless-stopped
-       networks:
-         - frontend-net
+2. **TLS:** issue a certificate for `oncall.ismartfacitech.com` the same way as the smartfm one. It must end up in `/etc/letsencrypt/live/oncall.ismartfacitech.com/`.
+3. **App:**
+   ```bash
+   git clone git@github.com:priyansx01/oncall-web.git /opt/oncall-web   # or: cd /opt/oncall-web && git pull
+   cd /opt/oncall-web
+   docker network ls | grep frontend-net        # must match the name in docker-compose.yml
+   docker compose up -d --build
    ```
-5. **nginx:** add this server block to `/opt/smartfm-frontend/docker/nginx/default.conf`, and add `oncall.ismartfacitech.com` to the port-80 redirect's `server_name`:
-   ```nginx
-   server {
-       listen 443 ssl;
-       server_name oncall.ismartfacitech.com;
-       ssl_certificate     /etc/letsencrypt/live/oncall.ismartfacitech.com/fullchain.pem;
-       ssl_certificate_key /etc/letsencrypt/live/oncall.ismartfacitech.com/privkey.pem;
-       ssl_protocols       TLSv1.2 TLSv1.3;
-       resolver 127.0.0.11 valid=10s;
-       set $oncall_upstream oncall;
-       location / {
-           proxy_pass http://$oncall_upstream:80;
-           proxy_set_header Host $host;
-           proxy_set_header X-Forwarded-Proto $scheme;
-       }
-   }
+4. **nginx:** append `deploy/nginx-oncall.conf` to `/opt/smartfm-frontend/docker/nginx/default.conf`, then test and reload:
+   ```bash
+   cat /opt/oncall-web/deploy/nginx-oncall.conf >> /opt/smartfm-frontend/docker/nginx/default.conf
+   cd /opt/smartfm-frontend && docker compose exec nginx nginx -t && docker compose exec nginx nginx -s reload
    ```
-6. **Start it:** `docker compose up -d --build oncall`, then `docker compose exec nginx nginx -s reload`.
-7. **Check:** open `https://oncall.ismartfacitech.com` on a phone. Sign in, allow access, check that sites are listed, then check in and check out with a test registration.
+   `deploy-smartfm.sh` keeps local edits to `default.conf` (git autostash), so this survives web deploys.
+5. **Check:** open `https://oncall.ismartfacitech.com` on a phone. Sign in, allow access, check that sites are listed, then check in and check out with a test registration.
 
-**Releasing a change:** `git pull && docker compose up -d --build oncall`. The service worker re-checks `index.html` and `sw.js` on every load, so phones pick up a new release on the next open.
+**Releasing a change:** `cd /opt/oncall-web && git pull && docker compose up -d --build`. The service worker re-checks `index.html` and `sw.js` on every load, so phones pick up a new release on the next open.

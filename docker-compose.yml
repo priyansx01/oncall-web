@@ -1,0 +1,18 @@
+# Runs next to smartfm-frontend on the frontend VM. It joins that project's network so its
+# nginx can reach this container by name ("oncall"). Check the network name with
+# `docker network ls | grep frontend-net` and change it below if it differs.
+services:
+  oncall:
+    image: oncall-web:latest
+    container_name: oncall
+    build:
+      context: .
+      network: host
+    restart: unless-stopped
+    networks:
+      - frontend-net
+
+networks:
+  frontend-net:
+    external: true
+    name: smartfm-frontend_frontend-net
