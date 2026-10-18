@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { IoArrowBack, IoBusinessOutline, IoCheckmark, IoClose, IoRefresh, IoSearch, IoShieldCheckmarkOutline } from "react-icons/io5";
+import { IoArrowBack, IoBusinessOutline, IoCheckmark, IoClose, IoHelpCircleOutline, IoRefresh, IoSearch, IoShieldCheckmarkOutline, IoWarningOutline } from "react-icons/io5";
 import { useLang } from "../i18n";
 import { api, type Attendance, type Reliever, type Site } from "../api";
 import { fmtDist, fmtTime, getFix, message, type Fix } from "../lib";
@@ -20,7 +20,14 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState<Attendance | null>(null);
-  const shot = usePhoto((f) => stampLines(reliever.oncallCode, reliever.name, site?.siteName ?? "", f));
+  // "My site is not in the list": check in anyway with the name typed; the photo must show the
+  // site board and building, and ops confirm the GPS on a map before the day is mapped.
+  const [unlisted, setUnlisted] = useState(false);
+  const [reported, setReported] = useState("");
+  const reportedName = reported.replace(/\s+/g, " ").trim();
+  const siteLabel = unlisted ? reportedName : (site?.siteName ?? "");
+  const ready = unlisted ? reportedName.length >= 3 : !!site;
+  const shot = usePhoto((f) => stampLines(reliever.oncallCode, reliever.name, unlisted ? `${reportedName} · NOT IN SITE LIST` : (site?.siteName ?? ""), f));
 
   const locate = useCallback(async () => {
     setLocating(true);
@@ -33,6 +40,8 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
       setSearched(false);
       // The nearest site is preselected when it is close enough to be where they are.
       setSite((cur) => (cur && list.some((s) => s.siteCode === cur.siteCode) ? cur : list[0] && (list[0].distanceM ?? 99999) <= 500 ? list[0] : null));
+      // Nothing within 2 km: offer "not in the list" straight away.
+      if (list.length === 0) setUnlisted(true);
     } catch (e) {
       setLocError(message(e, t("err_sites")));
     } finally {
@@ -62,12 +71,15 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
 
   const submit = async () => {
     const p = shot.photo;
-    if (!p || !site) return;
+    if (!p || !ready) return;
     setBusy(true);
     setSubmitError(null);
     try {
       const key = await api.uploadPhoto("selfie_in", p.blob);
-      const a = await api.checkIn({ siteCode: site.siteCode, selfieKey: key, latitude: p.fix.lat, longitude: p.fix.lng, accuracy: p.fix.acc });
+      const point = { selfieKey: key, latitude: p.fix.lat, longitude: p.fix.lng, accuracy: p.fix.acc };
+      const a = unlisted
+        ? await api.checkIn({ ...point, siteCode: "", unlisted: true, reportedSite: reportedName })
+        : await api.checkIn({ ...point, siteCode: site!.siteCode });
       setDone(a);
       void onDone();
     } catch (e) {
@@ -91,12 +103,13 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
           <h2 className="hero-title">{t("checked_in_title")}</h2>
           <p className="muted">{t("checked_in_body")}</p>
           <Card className="kv-card">
-            <KeyValueRow label={t("site")} value={done.siteName ?? site?.siteName ?? done.siteCode} />
+            <KeyValueRow label={t("site")} value={done.siteName ?? siteLabel ?? done.siteCode} />
             {(done.clientName ?? site?.clientName) && <KeyValueRow label={t("client")} value={done.clientName ?? site?.clientName} />}
             <KeyValueRow label={t("checked_in_at_label")} value={fmtTime(done.checkInAt)} />
             {done.checkInDistanceM != null && <KeyValueRow label={t("distance_from_site")} value={fmtDist(done.checkInDistanceM)} />}
             <KeyValueRow label={t("your_oncall_id")} value={reliever.oncallCode} />
           </Card>
+          {unlisted && <Card className="intro-card plain">{t("unlisted_confirm_note")}</Card>}
         </div>
         <div className="flow-footer">
           <Button onClick={onClose}>{t("go_home")}</Button>
@@ -146,11 +159,12 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
 
             <div className="site-list">
               {(sites ?? []).map((s) => {
-                const sel = site?.siteCode === s.siteCode;
+                const sel = !unlisted && site?.siteCode === s.siteCode;
                 return (
                   <button key={s.siteCode} className={`site-option${sel ? " selected" : ""}`} onClick={() => {
                       // The site is printed on the photo, so a different site needs a new photo.
-                      if (!sel) shot.reset();
+                      if (!sel || unlisted) shot.reset();
+                      setUnlisted(false);
                       setSite(s);
                     }}>
                     <div className="building">
@@ -174,6 +188,47 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
                 {t("search")}
               </button>
             </div>
+
+            <button
+              className={`site-option unlisted-option${unlisted ? " selected" : ""}`}
+              onClick={() => {
+                if (!unlisted) shot.reset();
+                setUnlisted(true);
+              }}
+            >
+              <div className="building warn">
+                <IoHelpCircleOutline size={22} />
+              </div>
+              <div className="grow">
+                <b>{t("unlisted_option")}</b>
+                <span>{t("unlisted_option_sub")}</span>
+              </div>
+              <span className={`radio${unlisted ? " on" : ""}`}>{unlisted && <IoCheckmark size={14} />}</span>
+            </button>
+
+            {unlisted && (
+              <Card className="unlisted-card">
+                <div className="unlisted-head">
+                  <IoWarningOutline size={20} />
+                  <b>{t("unlisted_title")}</b>
+                </div>
+                <p>{t("unlisted_body")}</p>
+                <label className="field">
+                  <span>{t("unlisted_name_label")}</span>
+                  <div className="input-wrap">
+                    <input
+                      value={reported}
+                      maxLength={120}
+                      placeholder={t("unlisted_name_placeholder")}
+                      onChange={(e) => {
+                        setReported(e.target.value);
+                        shot.reset(); // the name is printed on the photo
+                      }}
+                    />
+                  </div>
+                </label>
+              </Card>
+            )}
           </>
         )}
 
@@ -183,11 +238,11 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
             locating={shot.locating}
             error={shot.error}
             onTake={() => void shot.take()}
-            intro={t("photo_intro_in", { site: site?.siteName ?? "" })}
+            intro={unlisted ? t("unlisted_photo_intro") : t("photo_intro_in", { site: site?.siteName ?? "" })}
           />
         )}
 
-        {step === 2 && shot.photo && site && (
+        {step === 2 && shot.photo && ready && (
           <>
             <div className="step-intro">
               <h2>{t("confirm_check_in")}</h2>
@@ -196,17 +251,18 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
             <div className="confirm-top">
               <img src={shot.photo.url} alt="" className="thumb" />
               <div className="grow">
-                <b>{site.siteName}</b>
-                <span>{site.clientName ?? site.siteCode}</span>
+                <b>{siteLabel}</b>
+                <span>{unlisted ? <span className="chip warning"><i />{t("unlisted_badge")}</span> : (site?.clientName ?? site?.siteCode)}</span>
               </div>
             </div>
             <Card className="kv-card">
-              <KeyValueRow label={t("site")} value={site.siteName} />
-              {site.clientName && <KeyValueRow label={t("client")} value={site.clientName} />}
-              {site.distanceM != null && <KeyValueRow label={t("distance_from_site")} value={fmtDist(site.distanceM)} />}
+              <KeyValueRow label={t("site")} value={siteLabel} />
+              {!unlisted && site?.clientName && <KeyValueRow label={t("client")} value={site.clientName} />}
+              {!unlisted && site?.distanceM != null && <KeyValueRow label={t("distance_from_site")} value={fmtDist(site.distanceM)} />}
               <KeyValueRow label={t("photo_taken")} value={fmtTime(new Date(shot.photo.fix.at).toISOString())} />
               <KeyValueRow label={t("location_accuracy")} value={`±${shot.photo.fix.acc} m`} />
             </Card>
+            {unlisted && <Card className="intro-card plain">{t("unlisted_confirm_note")}</Card>}
             {submitError && <ErrorBanner onClose={() => setSubmitError(null)}>{submitError}</ErrorBanner>}
           </>
         )}
@@ -214,8 +270,8 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
 
       <div className="flow-footer">
         {step === 0 && (
-          <Button disabled={!site} onClick={() => setStep(1)}>
-            {site ? t("continue_at", { site: site.siteName }) : t("pick_site")}
+          <Button disabled={!ready} onClick={() => setStep(1)}>
+            {unlisted ? (ready ? t("continue_at", { site: reportedName }) : t("unlisted_err_name")) : site ? t("continue_at", { site: site.siteName }) : t("pick_site")}
           </Button>
         )}
         {step === 1 && (

@@ -149,7 +149,8 @@ export const api = {
   sitesNear: (lat: number, lng: number) => call<Site[]>("GET", `/oncall/public/sites-near?lat=${lat}&lng=${lng}`),
   searchSites: (q: string, lat?: number, lng?: number) =>
     call<Site[]>("GET", `/oncall/public/sites-near?q=${encodeURIComponent(q)}${lat != null && lng != null ? `&lat=${lat}&lng=${lng}` : ""}`),
-  checkIn: (b: { siteCode: string; selfieKey: string; latitude: number; longitude: number; accuracy?: number }) =>
+  /** unlisted: the site is not in the list — checked in with the typed name, ops confirm it later. */
+  checkIn: (b: { siteCode: string; selfieKey: string; latitude: number; longitude: number; accuracy?: number; unlisted?: boolean; reportedSite?: string }) =>
     call<Attendance>("POST", "/oncall/public/me/check-in", b, 30_000),
   checkOut: (b: { selfieKey: string; latitude: number; longitude: number; accuracy?: number }) =>
     call<Attendance>("POST", "/oncall/public/me/check-out", b, 30_000),

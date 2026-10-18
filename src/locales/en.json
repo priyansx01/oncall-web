@@ -234,5 +234,15 @@
   "bank_name_mismatch": "The name on this account doesn't match {name}. Payment is sent only to your own account.",
   "bank_yes_mine": "Yes, this is my account",
   "bank_no_change": "No, change details",
-  "change_account": "Change account"
+  "change_account": "Change account",
+  "unlisted_option": "My site is not in the list",
+  "unlisted_option_sub": "Check in anyway — operations will confirm the site",
+  "unlisted_title": "Site not in the list",
+  "unlisted_body": "You can still check in. In the photo, the site's name board and the building must be clearly visible. Operations will check your GPS location on the map and confirm the site.",
+  "unlisted_name_label": "Site / building name",
+  "unlisted_name_placeholder": "e.g. Orion Tech Park, Tower B",
+  "unlisted_err_name": "Enter the site or building name",
+  "unlisted_photo_intro": "Take the photo with the site's name board and the building clearly visible behind you.",
+  "unlisted_badge": "Not in list",
+  "unlisted_confirm_note": "Operations will check your location on the map and confirm the site."
 }

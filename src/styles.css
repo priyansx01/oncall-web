@@ -2221,3 +2221,37 @@ button.menu-row:active {
 .text-btn.center-self {
   align-self: center;
 }
+
+/* site not in the list */
+.unlisted-option {
+  border-style: dashed;
+}
+.building.warn {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+.unlisted-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--warning-bg);
+  border-color: #fedf89;
+  box-shadow: none;
+}
+.unlisted-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--warning);
+}
+.unlisted-head b {
+  font-size: 14.5px;
+}
+.unlisted-card p {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.unlisted-card .input-wrap {
+  background: #fff;
+}
