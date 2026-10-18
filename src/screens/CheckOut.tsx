@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { IoArrowBack, IoCheckmarkDone, IoClose } from "react-icons/io5";
+import { useLang } from "../i18n";
 import { api, type Attendance, type Reliever } from "../api";
 import { fmtMins, fmtTime, message, minutesWorked } from "../lib";
 import { Button, Card, ErrorBanner, FlowHeader, IconCircle, KeyValueRow, Stepper } from "../ui";
 import { PhotoStep, stampLines, usePhoto } from "./PhotoStep";
 
-const STEPS = ["Take photo", "Confirm"];
 
 export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Reliever; open: Attendance; onClose: () => void; onDone: () => Promise<void> }) {
+  const { t } = useLang();
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -25,7 +26,7 @@ export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Re
       setDone(await api.checkOut({ selfieKey: key, latitude: p.fix.lat, longitude: p.fix.lng, accuracy: p.fix.acc }));
       void onDone();
     } catch (e) {
-      setSubmitError(message(e, "Check-out failed."));
+      setSubmitError(message(e, t("err_check_out")));
     } finally {
       setBusy(false);
     }
@@ -42,20 +43,20 @@ export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Re
               <IoCheckmarkDone size={46} />
             </IconCircle>
           </div>
-          <h2 className="hero-title">Checked Out</h2>
-          <p className="muted">Thanks for today. Operations will check and approve the day.</p>
+          <h2 className="hero-title">{t("checked_out_title")}</h2>
+          <p className="muted">{t("checked_out_body")}</p>
           <div className="duration-card">
-            <span>Total duration</span>
+            <span>{t("total_duration")}</span>
             <b>{fmtMins(minutesWorked(done))}</b>
           </div>
           <Card className="kv-card">
-            <KeyValueRow label="Site" value={done.siteName ?? site} />
-            <KeyValueRow label="Check-in" value={fmtTime(done.checkInAt)} />
-            <KeyValueRow label="Check-out" value={fmtTime(done.checkOutAt)} />
+            <KeyValueRow label={t("site")} value={done.siteName ?? site} />
+            <KeyValueRow label={t("check_in")} value={fmtTime(done.checkInAt)} />
+            <KeyValueRow label={t("check_out")} value={fmtTime(done.checkOutAt)} />
           </Card>
         </div>
         <div className="flow-footer">
-          <Button onClick={onClose}>Done</Button>
+          <Button onClick={onClose}>{t("done")}</Button>
         </div>
       </div>
     );
@@ -63,8 +64,8 @@ export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Re
 
   return (
     <div className="flow">
-      <FlowHeader title="Check Out" onBack={() => (step === 0 ? onClose() : setStep(0))} icon={step === 0 ? <IoClose size={22} /> : <IoArrowBack size={22} />} />
-      <Stepper steps={STEPS} current={step} />
+      <FlowHeader title={t("check_out")} onBack={() => (step === 0 ? onClose() : setStep(0))} icon={step === 0 ? <IoClose size={22} /> : <IoArrowBack size={22} />} />
+      <Stepper steps={[t("step_photo"), t("step_confirm")]} current={step} />
 
       <div className="flow-body">
         {step === 0 && (
@@ -73,14 +74,14 @@ export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Re
             locating={shot.locating}
             error={shot.error}
             onTake={() => void shot.take()}
-            intro={`Leaving ${site}. Take a photo at the site as you check out.`}
+            intro={t("photo_intro_out", { site })}
           />
         )}
         {step === 1 && shot.photo && (
           <>
             <div className="step-intro">
-              <h2>Review &amp; submit</h2>
-              <p className="muted">Check the details, then check out.</p>
+              <h2>{t("review_submit")}</h2>
+              <p className="muted">{t("check_details_out")}</p>
             </div>
             <div className="confirm-top">
               <img src={shot.photo.url} alt="" className="thumb" />
@@ -90,10 +91,10 @@ export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Re
               </div>
             </div>
             <Card className="kv-card">
-              <KeyValueRow label="Checked in at" value={fmtTime(open.checkInAt)} />
-              <KeyValueRow label="Checking out at" value={fmtTime(new Date(shot.photo.fix.at).toISOString())} />
-              <KeyValueRow label="Worked" value={fmtMins(minutesWorked({ checkInAt: open.checkInAt, checkOutAt: new Date(shot.photo.fix.at).toISOString() }))} />
-              <KeyValueRow label="Location accuracy" value={`±${shot.photo.fix.acc} m`} />
+              <KeyValueRow label={t("checked_in_at_label")} value={fmtTime(open.checkInAt)} />
+              <KeyValueRow label={t("checking_out_at")} value={fmtTime(new Date(shot.photo.fix.at).toISOString())} />
+              <KeyValueRow label={t("worked")} value={fmtMins(minutesWorked({ checkInAt: open.checkInAt, checkOutAt: new Date(shot.photo.fix.at).toISOString() }))} />
+              <KeyValueRow label={t("location_accuracy")} value={`±${shot.photo.fix.acc} m`} />
             </Card>
             {submitError && <ErrorBanner onClose={() => setSubmitError(null)}>{submitError}</ErrorBanner>}
           </>
@@ -103,11 +104,11 @@ export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Re
       <div className="flow-footer">
         {step === 0 ? (
           <Button disabled={!shot.photo} onClick={() => setStep(1)}>
-            Continue
+            {t("continue")}
           </Button>
         ) : (
           <Button variant="danger" loading={busy} onClick={() => void submit()}>
-            Submit Check-Out
+            {t("submit_check_out")}
           </Button>
         )}
       </div>

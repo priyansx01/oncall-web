@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { IoCameraReverseOutline, IoClose, IoImageOutline } from "react-icons/io5";
+import { t } from "./i18n";
 
 // A plain photo — no face matching — with the place and time burned into it:
 // ON id + name, site, date/time (IST) and the GPS coordinates with accuracy.
@@ -54,7 +55,7 @@ export function CameraScreen({ title, stampLines, onCancel, onShot }: { title: s
     setError(null);
     setReady(false);
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError("This browser can't open the camera here — use “Phone camera”.");
+      setError(t("cam_unsupported"));
       return;
     }
     navigator.mediaDevices
@@ -67,7 +68,7 @@ export function CameraScreen({ title, stampLines, onCancel, onShot }: { title: s
           void video.current.play().then(() => !cancelled && setReady(true), () => undefined);
         }
       })
-      .catch(() => !cancelled && setError("The camera didn't open. Allow camera access for this site, or use “Phone camera”."));
+      .catch(() => !cancelled && setError(t("cam_blocked")));
     return () => {
       cancelled = true;
       stream.current?.getTracks().forEach((t) => t.stop());
@@ -92,18 +93,18 @@ export function CameraScreen({ title, stampLines, onCancel, onShot }: { title: s
       const bmp = await createImageBitmap(f);
       onShot(await stampPhoto(bmp, bmp.width, bmp.height, stampLines, false));
     } catch {
-      setError("That photo couldn't be read — please take it again.");
+      setError(t("err_file_read"));
     }
   };
 
   return (
     <div className="camera">
       <div className="camera-top">
-        <button className="cam-icon" onClick={onCancel} aria-label="Close">
+        <button className="cam-icon" onClick={onCancel} aria-label={t("close")}>
           <IoClose size={24} />
         </button>
         <span>{title}</span>
-        <button className="cam-icon" onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} aria-label="Switch camera">
+        <button className="cam-icon" onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))} aria-label={t("cam_switch")}>
           <IoCameraReverseOutline size={24} />
         </button>
       </div>
@@ -120,7 +121,7 @@ export function CameraScreen({ title, stampLines, onCancel, onShot }: { title: s
         </div>
       </div>
 
-      <p className="cam-hint">{error ?? (ready ? "Keep your face and the site in the frame" : "Opening camera…")}</p>
+      <p className="cam-hint">{error ?? (ready ? t("cam_hint") : t("cam_opening"))}</p>
 
       <div className="camera-actions">
         <input
@@ -136,11 +137,23 @@ export function CameraScreen({ title, stampLines, onCancel, onShot }: { title: s
         />
         <button className="cam-side" onClick={() => fileInput.current?.click()}>
           <IoImageOutline size={22} />
-          <span>Phone camera</span>
+          <span>{t("cam_phone")}</span>
         </button>
-        <button className="shutter" aria-label="Take photo" onClick={() => void capture()} disabled={!ready || busy} />
+        <button className="shutter" aria-label={t("take_photo")} onClick={() => void capture()} disabled={!ready || busy} />
         <span className="cam-side" />
       </div>
     </div>
   );
+}
+
+/** A picked photo (e.g. a passbook) as a JPEG of at most [maxSide] px — phone photos are 4–8 MB. */
+export async function shrinkImage(file: Blob, maxSide = 1600): Promise<Blob> {
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bmp.width * scale);
+  canvas.height = Math.round(bmp.height * scale);
+  canvas.getContext("2d")!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  bmp.close?.();
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("encode"))), "image/jpeg", 0.85));
 }

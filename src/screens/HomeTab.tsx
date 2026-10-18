@@ -3,7 +3,9 @@ import { IoArrowForward, IoBusinessOutline, IoChevronForward, IoDownloadOutline,
 import type { Me } from "../api";
 import type { InstallState } from "../install";
 import { fmtDay, fmtMins, fmtTime, greeting, initials, minutesWorked, statusOf, totals } from "../lib";
+import { useLang } from "../i18n";
 import { Brand, Button, Card, IconCircle, SectionHeader, Sheet, Shell, StatusChip } from "../ui";
+import { LanguageButton } from "./LanguagePicker";
 import type { Tab } from "./Main";
 
 export function HomeTab({
@@ -23,10 +25,11 @@ export function HomeTab({
   onCheckOut: () => void;
   onTab: (t: Tab) => void;
 }) {
+  const { t } = useLang();
   const r = me.reliever!;
   const open = me.open;
   const [confirmOut, setConfirmOut] = useState(false);
-  const t = useMemo(() => totals(me.recent, now), [me.recent, now]);
+  const tot = useMemo(() => totals(me.recent ?? [], now), [me.recent, now]);
 
   return (
     <Shell
@@ -34,13 +37,16 @@ export function HomeTab({
         <>
           <div className="header-row">
             <Brand />
-            <button className="avatar-sm" onClick={() => onTab("profile")} aria-label="Profile">
-              {initials(r.name)}
-            </button>
+            <div className="header-actions">
+              <LanguageButton light />
+              <button className="avatar-sm" onClick={() => onTab("profile")} aria-label={t("tab_profile")}>
+                {initials(r.name)}
+              </button>
+            </div>
           </div>
           <div className="welcome">
             <div className="greeting">{greeting()}</div>
-            <div className="user-name">{(r.name ?? "").split(" ")[0] || "Reliever"} 👋</div>
+            <div className="user-name">{(r.name ?? "").split(" ")[0] || t("role_title")} 👋</div>
             <div className="id-row">
               <i className="live-dot" />
               ID: {r.oncallCode}
@@ -55,11 +61,11 @@ export function HomeTab({
             <img src="/icons/icon-192.png" alt="" />
           </div>
           <div className="grow">
-            <b>Install the app</b>
-            <span>Open it from your home screen, full screen.</span>
+            <b>{t("save_app")}</b>
+            <span>{t("save_app_hint")}</span>
           </div>
           <Button small icon={<IoDownloadOutline size={16} />} onClick={onInstall}>
-            Install
+            {t("save")}
           </Button>
         </div>
       )}
@@ -67,9 +73,9 @@ export function HomeTab({
       <button className={`clock-card${open ? " working" : ""}`} onClick={() => (open ? setConfirmOut(true) : onCheckIn())}>
         <div className="clock-icon">{open ? <IoLogOutOutline size={26} /> : <IoTimeOutline size={28} />}</div>
         <div className="grow">
-          <div className="clock-label">Clock In / Out</div>
-          <div className="clock-title">{open ? `Working · ${fmtMins(minutesWorked(open, now))}` : "Tap to check in"}</div>
-          <div className="clock-sub">{open ? `Since ${fmtTime(open.checkInAt)} · tap to check out` : "Pick your site and take a photo"}</div>
+          <div className="clock-label">{t("clock_label")}</div>
+          <div className="clock-title">{open ? t("working_for", { time: fmtMins(minutesWorked(open, now)) }) : t("tap_check_in")}</div>
+          <div className="clock-sub">{open ? t("since_tap_out", { time: fmtTime(open.checkInAt) }) : t("check_in_sub")}</div>
         </div>
         <div className="arrow-circle">
           <IoArrowForward size={18} />
@@ -78,7 +84,7 @@ export function HomeTab({
 
       {open && (
         <section className="block">
-          <SectionHeader title="Current Site" />
+          <SectionHeader title={t("current_site")} />
           <Card className="site-card">
             <div className="site-top">
               <div className="building">
@@ -86,13 +92,13 @@ export function HomeTab({
               </div>
               <div className="grow">
                 <div className="site-title">{open.siteName ?? open.siteCode}</div>
-                <div className="site-sub">{open.clientName ?? "Checked in"}</div>
+                <div className="site-sub">{open.clientName ?? t("checked_in")}</div>
               </div>
-              <StatusChip label="On duty" tone="success" />
+              <StatusChip label={t("on_duty")} tone="success" />
             </div>
             <div className="meta">
               <div>
-                <IoTimeOutline size={16} /> Checked in at {fmtTime(open.checkInAt)}
+                <IoTimeOutline size={16} /> {t("checked_in_at", { time: fmtTime(open.checkInAt) })}
               </div>
             </div>
           </Card>
@@ -100,13 +106,13 @@ export function HomeTab({
       )}
 
       <section className="block">
-        <SectionHeader title="Hours Worked" />
+        <SectionHeader title={t("hours_worked")} />
         <div className="tiles">
           {(
             [
-              ["Today", t.today],
-              ["This week", t.week],
-              ["This month", t.month],
+              [t("today"), tot.today],
+              [t("this_week"), tot.week],
+              [t("this_month"), tot.month],
             ] as const
           ).map(([label, m]) => (
             <div key={label} className="tile">
@@ -119,11 +125,11 @@ export function HomeTab({
 
       <section className="block">
         <SectionHeader
-          title="Recent Days"
+          title={t("recent_days")}
           action={
             me.recent.length > 0 && (
               <button className="see-all" onClick={() => onTab("attendance")}>
-                See All <IoChevronForward size={14} />
+                {t("see_all")} <IoChevronForward size={14} />
               </button>
             )
           }
@@ -131,7 +137,7 @@ export function HomeTab({
         {me.recent.length === 0 ? (
           <Card className="quiet">
             <IoCalendarOutline size={22} />
-            <span>No check-ins yet. Your days show up here.</span>
+            <span>{t("no_checkins_home")}</span>
           </Card>
         ) : (
           <div className="list-card">
@@ -162,15 +168,12 @@ export function HomeTab({
           <IconCircle tone="danger" size={64}>
             <IoLogOutOutline size={30} />
           </IconCircle>
-          <h3>End Today&apos;s Work?</h3>
-          <p className="muted">
-            You&apos;ve worked <b className="ink">{open ? fmtMins(minutesWorked(open, now)) : ""}</b> at {open?.siteName ?? "this site"}. Check out only when
-            you are leaving — you&apos;ll take a photo next.
-          </p>
+          <h3>{t("end_work_title")}</h3>
+          <p className="muted">{t("end_work_body", { time: open ? fmtMins(minutesWorked(open, now)) : "", site: open?.siteName ?? "" })}</p>
         </div>
         <div className="sheet-actions">
           <Button variant="secondary" onClick={() => setConfirmOut(false)}>
-            Not Yet
+            {t("not_yet")}
           </Button>
           <Button
             variant="danger"
@@ -179,7 +182,7 @@ export function HomeTab({
               onCheckOut();
             }}
           >
-            Yes, Check Out
+            {t("yes_check_out")}
           </Button>
         </div>
       </Sheet>

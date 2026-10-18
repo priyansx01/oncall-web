@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { IoAlertCircle, IoCheckmark, IoClose, IoLocation } from "react-icons/io5";
+import { t } from "./i18n";
 
 // Primitives copied from the SmartFM Reliever app's design (src/components/primitives there).
 
@@ -166,8 +167,8 @@ export function Brand() {
         <img src="/logo-white.png" alt="" />
       </div>
       <div>
-        <div className="brand-name">SmartFM</div>
-        <div className="brand-tag">Safe People · Smart Buildings</div>
+        <div className="brand-name">iSmart Facitech</div>
+        <div className="brand-tag">{t("role_title")}</div>
       </div>
     </div>
   );

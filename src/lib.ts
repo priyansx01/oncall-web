@@ -1,18 +1,19 @@
 import { ApiError, type Attendance } from "./api";
+import { intlLocale, t } from "./i18n";
 
 export type Fix = { lat: number; lng: number; acc: number; at: number };
 
 export function getFix(): Promise<Fix> {
   return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error("This browser can't share your location."));
+    if (!navigator.geolocation) return reject(new Error(t("err_no_geolocation")));
     navigator.geolocation.getCurrentPosition(
       (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), at: Date.now() }),
       (e) =>
         reject(
           new Error(
             e.code === 1
-              ? "Location is blocked. Allow location for this site in your browser settings, then try again."
-              : "Couldn't get your location — turn on GPS / move near a window and try again.",
+              ? t("err_location_blocked")
+              : t("err_location_failed"),
           ),
         ),
       { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 },
@@ -21,9 +22,10 @@ export function getFix(): Promise<Fix> {
 }
 
 const IST: Intl.DateTimeFormatOptions = { timeZone: "Asia/Kolkata" };
-export const fmtTime = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString("en-IN", { ...IST, hour: "2-digit", minute: "2-digit" }) : "—");
-export const fmtDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
-export const fmtLongDay = (d = new Date()) => d.toLocaleDateString("en-IN", { ...IST, weekday: "long", day: "numeric", month: "long" });
+export const fmtTime = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString(intlLocale(), { ...IST, hour: "2-digit", minute: "2-digit" }) : "—");
+export const fmtDay = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(intlLocale(), { weekday: "short", day: "numeric", month: "short" });
+export const fmtLongDay = (d = new Date()) => d.toLocaleDateString(intlLocale(), { ...IST, weekday: "long", day: "numeric", month: "long" });
+export const fmtMonth = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(intlLocale(), { month: "short" });
 export const fmtStamp = (d: Date) =>
   d.toLocaleString("en-IN", { ...IST, day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }) + " IST";
 export const fmtDist = (m: number | null) => (m == null ? "" : m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`);
@@ -32,7 +34,7 @@ export function minutesWorked(a: Pick<Attendance, "checkInAt" | "checkOutAt">, n
   const end = a.checkOutAt ? new Date(a.checkOutAt).getTime() : now;
   return Math.max(0, Math.round((end - new Date(a.checkInAt).getTime()) / 60000));
 }
-export const fmtMins = (m: number) => `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
+export const fmtMins = (m: number) => t("hours_mins", { h: Math.floor(m / 60), m: String(m % 60).padStart(2, "0") });
 
 export function istDate(d = new Date()): string {
   return new Date(d.getTime() + 330 * 60_000).toISOString().slice(0, 10);
@@ -40,7 +42,7 @@ export function istDate(d = new Date()): string {
 
 export function greeting(): string {
   const h = Number(new Date().toLocaleString("en-IN", { ...IST, hour: "numeric", hour12: false }));
-  return h < 12 ? "Good Morning," : h < 17 ? "Good Afternoon," : "Good Evening,";
+  return h < 12 ? t("good_morning") : h < 17 ? t("good_afternoon") : t("good_evening");
 }
 
 export function initials(name: string | null | undefined): string {
@@ -64,8 +66,8 @@ export function totals(rows: Attendance[], now: number) {
 }
 
 export function statusOf(a: Attendance): { label: string; tone: "success" | "warning" | "danger" | "info" } {
-  if (a.status === "verified") return { label: "Approved", tone: "success" };
-  if (a.status === "rejected") return { label: "Not approved", tone: "danger" };
-  if (!a.checkOutAt) return { label: "Working", tone: "info" };
-  return { label: "Pending check", tone: "warning" };
+  if (a.status === "verified") return { label: t("st_approved"), tone: "success" };
+  if (a.status === "rejected") return { label: t("st_rejected"), tone: "danger" };
+  if (!a.checkOutAt) return { label: t("st_working"), tone: "info" };
+  return { label: t("st_pending"), tone: "warning" };
 }

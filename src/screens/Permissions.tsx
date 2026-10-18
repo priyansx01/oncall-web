@@ -1,11 +1,46 @@
 import { useEffect, useState } from "react";
 import { IoCameraOutline, IoCheckmarkCircle, IoLocationOutline, IoShieldCheckmarkOutline, IoWarning } from "react-icons/io5";
+import { useLang } from "../i18n";
 import { getFix } from "../lib";
 import { Button, ErrorBanner, IconCircle } from "../ui";
 
+const PERMS_KEY = "oncall_perms_v1";
+
+export function permissionsGranted(): boolean {
+  try {
+    return localStorage.getItem(PERMS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Joining already asked for location + camera (the geo-tagged photo), so Home needn't ask again. */
+export function markPermissionsGranted(): void {
+  try {
+    localStorage.setItem(PERMS_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
 type S = "idle" | "ok" | "denied";
 
+function Row({ icon, label, why, state }: { icon: JSX.Element; label: string; why: string; state: S }) {
+  return (
+    <div className={`perm-card ${state}`}>
+      <div className="perm-icon">{icon}</div>
+      <div className="grow">
+        <b>{label}</b>
+        <span>{why}</span>
+      </div>
+      {state === "ok" && <IoCheckmarkCircle size={24} className="ok-icon" />}
+      {state === "denied" && <IoWarning size={22} className="bad-icon" />}
+    </div>
+  );
+}
+
 export function Permissions({ onDone }: { onDone: () => void }) {
+  const { t } = useLang();
   const [loc, setLoc] = useState<S>("idle");
   const [cam, setCam] = useState<S>("idle");
   const [busy, setBusy] = useState(false);
@@ -20,7 +55,7 @@ export function Permissions({ onDone }: { onDone: () => void }) {
     }
     try {
       const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      s.getTracks().forEach((t) => t.stop());
+      s.getTracks().forEach((tr) => tr.stop());
       setCam("ok");
     } catch {
       setCam("denied");
@@ -30,50 +65,34 @@ export function Permissions({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     if (loc === "ok" && cam === "ok") {
-      const t = setTimeout(onDone, 600);
-      return () => clearTimeout(t);
+      markPermissionsGranted();
+      const timer = setTimeout(onDone, 600);
+      return () => clearTimeout(timer);
     }
   }, [loc, cam, onDone]);
 
   const denied = loc === "denied" || cam === "denied";
-  const Row = ({ icon, label, why, state }: { icon: JSX.Element; label: string; why: string; state: S }) => (
-    <div className={`perm-card ${state}`}>
-      <div className="perm-icon">{icon}</div>
-      <div className="grow">
-        <b>{label}</b>
-        <span>{why}</span>
-      </div>
-      {state === "ok" && <IoCheckmarkCircle size={24} className="ok-icon" />}
-      {state === "denied" && <IoWarning size={22} className="bad-icon" />}
-    </div>
-  );
-
   return (
     <div className="flow">
       <div className="flow-body center-text">
         <IconCircle size={92}>
           <IoShieldCheckmarkOutline size={42} />
         </IconCircle>
-        <h2 className="hero-title">Allow access</h2>
-        <p className="muted">Two permissions are needed to check you in at a site.</p>
+        <h2 className="hero-title">{t("perm_title")}</h2>
+        <p className="muted">{t("perm_intro")}</p>
         <div className="perm-list">
-          <Row icon={<IoLocationOutline size={22} />} label="Location" why="Finds the sites near you and records where you checked in." state={loc} />
-          <Row icon={<IoCameraOutline size={22} />} label="Camera" why="Takes a photo at check-in and check-out, stamped with the time and place." state={cam} />
+          <Row icon={<IoLocationOutline size={22} />} label={t("perm_location")} why={t("perm_location_why")} state={loc} />
+          <Row icon={<IoCameraOutline size={22} />} label={t("perm_camera")} why={t("perm_camera_why")} state={cam} />
         </div>
-        {denied && (
-          <ErrorBanner>
-            {loc === "denied" && cam === "denied" ? "Location and camera are" : loc === "denied" ? "Location is" : "Camera is"} blocked. Tap the lock icon
-            next to the address (or the browser&apos;s site settings), allow it, then tap Try again.
-          </ErrorBanner>
-        )}
+        {denied && <ErrorBanner>{t("perm_blocked")}</ErrorBanner>}
       </div>
       <div className="flow-footer">
         <Button loading={busy} onClick={() => void ask()}>
-          {loc === "idle" && cam === "idle" ? "Allow access" : "Try again"}
+          {loc === "idle" && cam === "idle" ? t("perm_allow") : t("try_again")}
         </Button>
         {denied && (
           <Button variant="ghost" onClick={onDone}>
-            Continue anyway
+            {t("continue_anyway")}
           </Button>
         )}
       </div>

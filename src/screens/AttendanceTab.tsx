@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { IoEnterOutline, IoExitOutline, IoRefresh } from "react-icons/io5";
 import type { Me } from "../api";
-import { fmtDay, fmtLongDay, fmtMins, fmtTime, istDate, minutesWorked, statusOf, totals } from "../lib";
+import { useLang } from "../i18n";
+import { fmtDay, fmtLongDay, fmtMins, fmtMonth, fmtTime, istDate, minutesWorked, statusOf, totals } from "../lib";
 import { Card, SectionHeader, Shell, StatusChip } from "../ui";
 
 const DAY_MIN = 8 * 60;
@@ -25,8 +26,9 @@ function Dial({ minutes, label }: { minutes: number; label: string }) {
 }
 
 export function AttendanceTab({ me, now, onRefresh }: { me: Me; now: number; onRefresh: () => Promise<void> }) {
+  const { t } = useLang();
   const [spinning, setSpinning] = useState(false);
-  const t = useMemo(() => totals(me.recent, now), [me.recent, now]);
+  const tot = useMemo(() => totals(me.recent ?? [], now), [me.recent, now]);
   const today = istDate();
   const todays = me.recent.filter((a) => a.date === today);
 
@@ -35,12 +37,12 @@ export function AttendanceTab({ me, now, onRefresh }: { me: Me; now: number; onR
       header={
         <div className="page-head">
           <div>
-            <h1>Attendance</h1>
+            <h1>{t("tab_attendance")}</h1>
             <p>{fmtLongDay()}</p>
           </div>
           <button
             className="head-icon"
-            aria-label="Refresh"
+            aria-label={t("refresh")}
             onClick={async () => {
               setSpinning(true);
               await onRefresh();
@@ -53,24 +55,24 @@ export function AttendanceTab({ me, now, onRefresh }: { me: Me; now: number; onR
       }
     >
       <Card className="dial-card">
-        <Dial minutes={t.today} label={me.open ? "working now" : "today"} />
+        <Dial minutes={tot.today} label={me.open ? t("working_now") : t("today")} />
         <div className="dial-stats">
           <div>
-            <b>{fmtMins(t.week)}</b>
-            <span>This week</span>
+            <b>{fmtMins(tot.week)}</b>
+            <span>{t("this_week")}</span>
           </div>
           <div>
-            <b>{fmtMins(t.month)}</b>
-            <span>This month</span>
+            <b>{fmtMins(tot.month)}</b>
+            <span>{t("this_month")}</span>
           </div>
         </div>
       </Card>
 
       <section className="block">
-        <SectionHeader title="Today's Timeline" />
+        <SectionHeader title={t("todays_timeline")} />
         {todays.length === 0 ? (
           <Card className="quiet">
-            <span>You haven&apos;t checked in today.</span>
+            <span>{t("not_checked_in_today")}</span>
           </Card>
         ) : (
           <Card className="timeline">
@@ -81,7 +83,7 @@ export function AttendanceTab({ me, now, onRefresh }: { me: Me; now: number; onR
                     <IoEnterOutline size={16} />
                   </div>
                   <div className="grow">
-                    <b>Checked in</b>
+                    <b>{t("checked_in")}</b>
                     <span>{a.siteName ?? a.siteCode}</span>
                   </div>
                   <time>{fmtTime(a.checkInAt)}</time>
@@ -91,8 +93,8 @@ export function AttendanceTab({ me, now, onRefresh }: { me: Me; now: number; onR
                     <IoExitOutline size={16} />
                   </div>
                   <div className="grow">
-                    <b>{a.checkOutAt ? "Checked out" : "Not checked out yet"}</b>
-                    <span>{fmtMins(minutesWorked(a, now))} worked</span>
+                    <b>{a.checkOutAt ? t("checked_out") : t("not_checked_out")}</b>
+                    <span>{t("worked_time", { time: fmtMins(minutesWorked(a, now)) })}</span>
                   </div>
                   <time>{a.checkOutAt ? fmtTime(a.checkOutAt) : "—"}</time>
                 </div>
@@ -103,10 +105,10 @@ export function AttendanceTab({ me, now, onRefresh }: { me: Me; now: number; onR
       </section>
 
       <section className="block">
-        <SectionHeader title="History" />
+        <SectionHeader title={t("history")} />
         {me.recent.length === 0 ? (
           <Card className="quiet">
-            <span>No check-ins yet.</span>
+            <span>{t("no_checkins")}</span>
           </Card>
         ) : (
           <div className="list-card">
@@ -116,15 +118,15 @@ export function AttendanceTab({ me, now, onRefresh }: { me: Me; now: number; onR
                 <div key={a.id} className="hist-row">
                   <div className="hist-date">
                     <b>{new Date(`${a.date}T00:00:00`).getDate()}</b>
-                    <span>{new Date(`${a.date}T00:00:00`).toLocaleDateString("en-IN", { month: "short" })}</span>
+                    <span>{fmtMonth(a.date)}</span>
                   </div>
                   <div className="grow">
                     <b>{a.siteName ?? a.siteCode}</b>
                     <span>
-                      {fmtDay(a.date)} · {fmtTime(a.checkInAt)} – {a.checkOutAt ? fmtTime(a.checkOutAt) : "now"}
+                      {fmtDay(a.date)} · {fmtTime(a.checkInAt)} – {a.checkOutAt ? fmtTime(a.checkOutAt) : t("now")}
                     </span>
                     {a.status === "rejected" && a.rejectReason && <span className="reason">{a.rejectReason}</span>}
-                    {a.status === "verified" && a.coveredName && <span className="covered">Covered for {a.coveredName}</span>}
+                    {a.status === "verified" && a.coveredName && <span className="covered">{t("covered_for", { name: a.coveredName })}</span>}
                   </div>
                   <div className="right">
                     <b>{fmtMins(minutesWorked(a, now))}</b>
@@ -135,7 +137,7 @@ export function AttendanceTab({ me, now, onRefresh }: { me: Me; now: number; onR
             })}
           </div>
         )}
-        <p className="foot-note">Operations check every day. Approved days are paid.</p>
+        <p className="foot-note">{t("attendance_note")}</p>
       </section>
     </Shell>
   );

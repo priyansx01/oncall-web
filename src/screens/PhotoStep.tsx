@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { IoCamera, IoRefresh } from "react-icons/io5";
 import { CameraScreen } from "../camera";
 import { fmtStamp, getFix, message, type Fix } from "../lib";
+import { t } from "../i18n";
 import { Button, ErrorBanner, LocationSummary } from "../ui";
 
 export type Photo = { blob: Blob; url: string; fix: Fix };
@@ -29,7 +30,7 @@ export function usePhoto(stampFor: (f: Fix) => string[]) {
     try {
       setCamFix(await getFix());
     } catch (e) {
-      setError(message(e, "Couldn't get your location."));
+      setError(message(e, t("err_location_failed")));
     } finally {
       setLocating(false);
     }
@@ -37,7 +38,7 @@ export function usePhoto(stampFor: (f: Fix) => string[]) {
 
   const camera = camFix ? (
     <CameraScreen
-      title="Take photo"
+      title={t("take_photo")}
       stampLines={stampFor(camFix)}
       onCancel={() => setCamFix(null)}
       onShot={(blob) => {
@@ -56,24 +57,24 @@ export function PhotoStep({ photo, locating, error, onTake, intro }: { photo: Ph
   return (
     <>
       <div className="step-intro">
-        <h2>{photo ? "Check your photo" : "Take a photo"}</h2>
+        <h2>{photo ? t("check_photo") : t("take_a_photo")}</h2>
         <p className="muted">{intro}</p>
       </div>
       {photo ? (
         <>
           <div className="selfie-preview">
-            <img src={photo.url} alt="Your photo" />
+            <img src={photo.url} alt="" />
           </div>
-          <LocationSummary title={`Location accurate to ±${photo.fix.acc} m`} sub={`${photo.fix.lat.toFixed(5)}, ${photo.fix.lng.toFixed(5)}`} />
+          <LocationSummary title={t("location_accuracy_value", { m: photo.fix.acc })} sub={`${photo.fix.lat.toFixed(5)}, ${photo.fix.lng.toFixed(5)}`} />
           <Button variant="secondary" icon={<IoRefresh size={18} />} loading={locating} onClick={onTake}>
-            Retake photo
+            {t("retake_photo")}
           </Button>
         </>
       ) : (
         <button className="photo-placeholder" onClick={onTake} disabled={locating}>
           <div className="ph-icon">{locating ? <span className="spin" /> : <IoCamera size={34} />}</div>
-          <b>{locating ? "Getting your location…" : "Open camera"}</b>
-          <span>The time, site and your location are printed on the photo.</span>
+          <b>{locating ? t("getting_location") : t("open_camera")}</b>
+          <span>{t("photo_stamp_note")}</span>
         </button>
       )}
       {error && <ErrorBanner>{error}</ErrorBanner>}

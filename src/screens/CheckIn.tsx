@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { IoArrowBack, IoBusinessOutline, IoCheckmark, IoClose, IoRefresh, IoSearch, IoShieldCheckmarkOutline } from "react-icons/io5";
+import { useLang } from "../i18n";
 import { api, type Attendance, type Reliever, type Site } from "../api";
 import { fmtDist, fmtTime, getFix, message, type Fix } from "../lib";
 import { Button, Card, ErrorBanner, FlowHeader, IconCircle, KeyValueRow, LocationSummary, Spinner, Stepper } from "../ui";
 import { PhotoStep, stampLines, usePhoto } from "./PhotoStep";
 
-const STEPS = ["Choose site", "Take photo", "Confirm"];
 
 export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever; onClose: () => void; onDone: () => Promise<void> }) {
+  const { t } = useLang();
   const [step, setStep] = useState(0);
   const [fix, setFix] = useState<Fix | null>(null);
   const [sites, setSites] = useState<Site[] | null>(null);
@@ -33,7 +34,7 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
       // The nearest site is preselected when it is close enough to be where they are.
       setSite((cur) => (cur && list.some((s) => s.siteCode === cur.siteCode) ? cur : list[0] && (list[0].distanceM ?? 99999) <= 500 ? list[0] : null));
     } catch (e) {
-      setLocError(message(e, "Couldn't find nearby sites."));
+      setLocError(message(e, t("err_sites")));
     } finally {
       setLocating(false);
     }
@@ -53,7 +54,7 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
       setSite(null);
       shot.reset();
     } catch (e) {
-      setLocError(message(e, "Search failed."));
+      setLocError(message(e, t("err_search")));
     } finally {
       setLocating(false);
     }
@@ -70,7 +71,7 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
       setDone(a);
       void onDone();
     } catch (e) {
-      setSubmitError(message(e, "Check-in failed."));
+      setSubmitError(message(e, t("err_check_in")));
     } finally {
       setBusy(false);
     }
@@ -87,18 +88,18 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
               <IoCheckmark size={48} />
             </IconCircle>
           </div>
-          <h2 className="hero-title">Checked In Successfully</h2>
-          <p className="muted">Have a good day at work. Check out here when you leave.</p>
+          <h2 className="hero-title">{t("checked_in_title")}</h2>
+          <p className="muted">{t("checked_in_body")}</p>
           <Card className="kv-card">
-            <KeyValueRow label="Site" value={done.siteName ?? site?.siteName ?? done.siteCode} />
-            {(done.clientName ?? site?.clientName) && <KeyValueRow label="Client" value={done.clientName ?? site?.clientName} />}
-            <KeyValueRow label="Checked in at" value={fmtTime(done.checkInAt)} />
-            {done.checkInDistanceM != null && <KeyValueRow label="Distance from site" value={fmtDist(done.checkInDistanceM)} />}
-            <KeyValueRow label="On-call ID" value={reliever.oncallCode} />
+            <KeyValueRow label={t("site")} value={done.siteName ?? site?.siteName ?? done.siteCode} />
+            {(done.clientName ?? site?.clientName) && <KeyValueRow label={t("client")} value={done.clientName ?? site?.clientName} />}
+            <KeyValueRow label={t("checked_in_at_label")} value={fmtTime(done.checkInAt)} />
+            {done.checkInDistanceM != null && <KeyValueRow label={t("distance_from_site")} value={fmtDist(done.checkInDistanceM)} />}
+            <KeyValueRow label={t("your_oncall_id")} value={reliever.oncallCode} />
           </Card>
         </div>
         <div className="flow-footer">
-          <Button onClick={onClose}>Go to Home</Button>
+          <Button onClick={onClose}>{t("go_home")}</Button>
         </div>
       </div>
     );
@@ -108,8 +109,8 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
 
   return (
     <div className="flow">
-      <FlowHeader title="Check In" onBack={back} icon={step === 0 ? <IoClose size={22} /> : <IoArrowBack size={22} />} />
-      <Stepper steps={STEPS} current={step} />
+      <FlowHeader title={t("check_in")} onBack={back} icon={step === 0 ? <IoClose size={22} /> : <IoArrowBack size={22} />} />
+      <Stepper steps={[t("step_site"), t("step_photo"), t("step_confirm")]} current={step} />
 
       <div className="flow-body">
         {step === 0 && (
@@ -117,20 +118,20 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
             <Card className="intro-card">
               <IoShieldCheckmarkOutline size={22} />
               <div>
-                <b>Site Verification Required</b>
-                <span>Pick the site you were sent to. Operations check every check-in against the photo and location.</span>
+                <b>{t("site_verification")}</b>
+                <span>{t("site_verification_body")}</span>
               </div>
             </Card>
 
             <LocationSummary
-              title={fix ? `Location accurate to ±${fix.acc} m` : locating ? "Finding your location…" : "Location not found"}
-              sub={fix ? `Updated at ${fmtTime(new Date(fix.at).toISOString())}` : "GPS must be on"}
+              title={fix ? t("location_accuracy_value", { m: fix.acc }) : locating ? t("finding_location") : t("location_not_found")}
+              sub={fix ? t("updated_at", { time: fmtTime(new Date(fix.at).toISOString()) }) : t("gps_on")}
             />
 
             <div className="row-between">
-              <h3 className="sub-title">{searched ? "Search results" : "Sites near you"}</h3>
+              <h3 className="sub-title">{searched ? t("search_results") : t("sites_near")}</h3>
               <button className="text-btn" onClick={() => void locate()} disabled={locating}>
-                <IoRefresh size={15} /> Refresh
+                <IoRefresh size={15} /> {t("refresh")}
               </button>
             </div>
 
@@ -138,10 +139,10 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
             {locating && !sites && (
               <div className="loading-block">
                 <Spinner dark />
-                <span>Finding sites near you…</span>
+                <span>{t("finding_sites")}</span>
               </div>
             )}
-            {sites && sites.length === 0 && <Card className="quiet">No site found within 2 km. Search for it by name below.</Card>}
+            {sites && sites.length === 0 && <Card className="quiet">{t("no_sites")}</Card>}
 
             <div className="site-list">
               {(sites ?? []).map((s) => {
@@ -168,9 +169,9 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
 
             <div className="search-box">
               <IoSearch size={18} />
-              <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void search()} placeholder="Not listed? Search site name" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void search()} placeholder={t("search_placeholder")} />
               <button className="text-btn" onClick={() => void search()} disabled={locating || q.trim().length < 2}>
-                Search
+                {t("search")}
               </button>
             </div>
           </>
@@ -182,15 +183,15 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
             locating={shot.locating}
             error={shot.error}
             onTake={() => void shot.take()}
-            intro={`At ${site?.siteName ?? "the site"}. Take a clear photo of yourself at the site.`}
+            intro={t("photo_intro_in", { site: site?.siteName ?? "" })}
           />
         )}
 
         {step === 2 && shot.photo && site && (
           <>
             <div className="step-intro">
-              <h2>Confirm check-in</h2>
-              <p className="muted">Check the details, then submit.</p>
+              <h2>{t("confirm_check_in")}</h2>
+              <p className="muted">{t("check_details")}</p>
             </div>
             <div className="confirm-top">
               <img src={shot.photo.url} alt="" className="thumb" />
@@ -200,11 +201,11 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
               </div>
             </div>
             <Card className="kv-card">
-              <KeyValueRow label="Site" value={site.siteName} />
-              {site.clientName && <KeyValueRow label="Client" value={site.clientName} />}
-              {site.distanceM != null && <KeyValueRow label="Distance from site" value={fmtDist(site.distanceM)} />}
-              <KeyValueRow label="Photo taken" value={fmtTime(new Date(shot.photo.fix.at).toISOString())} />
-              <KeyValueRow label="Location accuracy" value={`±${shot.photo.fix.acc} m`} />
+              <KeyValueRow label={t("site")} value={site.siteName} />
+              {site.clientName && <KeyValueRow label={t("client")} value={site.clientName} />}
+              {site.distanceM != null && <KeyValueRow label={t("distance_from_site")} value={fmtDist(site.distanceM)} />}
+              <KeyValueRow label={t("photo_taken")} value={fmtTime(new Date(shot.photo.fix.at).toISOString())} />
+              <KeyValueRow label={t("location_accuracy")} value={`±${shot.photo.fix.acc} m`} />
             </Card>
             {submitError && <ErrorBanner onClose={() => setSubmitError(null)}>{submitError}</ErrorBanner>}
           </>
@@ -214,17 +215,17 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
       <div className="flow-footer">
         {step === 0 && (
           <Button disabled={!site} onClick={() => setStep(1)}>
-            {site ? `Continue at ${site.siteName}` : "Pick your site"}
+            {site ? t("continue_at", { site: site.siteName }) : t("pick_site")}
           </Button>
         )}
         {step === 1 && (
           <Button disabled={!shot.photo} onClick={() => setStep(2)}>
-            Continue
+            {t("continue")}
           </Button>
         )}
         {step === 2 && (
           <Button loading={busy} onClick={() => void submit()}>
-            Submit Check-In
+            {t("submit_check_in")}
           </Button>
         )}
       </div>

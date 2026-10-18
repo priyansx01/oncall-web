@@ -2,19 +2,35 @@
 // the scoped token it returns is all the identity there is — the server resolves the
 // reliever from the mobile inside it, so no ids are ever sent.
 
-const API = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, "") || "https://api.ismartfacitech.com/api/v1";
+import { t } from "./i18n";
+
+export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, "") || "https://api.ismartfacitech.com/api/v1";
+const API = API_BASE;
 const SESSION_KEY = "oncall_session_v1";
 
 export type Session = { token: string; mobile: string; exp: number };
+
+export type KycStatus = "verified" | "pending_manual" | null;
 
 export type Reliever = {
   id: number;
   oncallCode: string | null;
   mobile: string;
   name: string | null;
+  dob: string | null;
+  gender: string | null;
+  aadhaarLast4: string | null;
+  aadhaarStatus: KycStatus;
+  accountNo: string | null;
+  ifsc: string | null;
+  bankName: string | null;
+  bankStatus: KycStatus;
+  passbookKey: string | null;
   status: "draft" | "active" | "inactive";
   photoKey: string | null;
   missing: string[];
+  /** Set by the Aadhaar / bank checks when the provider was down (saved for manual review). */
+  kycMessage?: string | null;
 };
 
 export type Attendance = {
@@ -42,7 +58,7 @@ export type Site = {
 };
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status?: number) {
+  constructor(message: string, readonly status?: number, readonly data?: Record<string, unknown>) {
     super(message);
   }
 }
@@ -90,7 +106,7 @@ async function call<T>(method: string, path: string, body?: unknown, timeoutMs =
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch (err) {
-    throw new ApiError((err as Error)?.name === "AbortError" ? "The network is slow — please try again." : "No internet connection — please try again.");
+    throw new ApiError((err as Error)?.name === "AbortError" ? t("err_slow") : t("err_offline"));
   } finally {
     clearTimeout(timer);
   }
@@ -102,9 +118,10 @@ async function call<T>(method: string, path: string, body?: unknown, timeoutMs =
   }
   if (!res.ok) {
     if (res.status === 401 && current) onExpired.dispatchEvent(new Event("expired"));
-    const m = (json as { message?: unknown } | null)?.message;
-    const msg = typeof m === "string" ? m : Array.isArray(m) && m.length ? String(m[0]) : res.status === 429 ? "Too many tries — wait a minute and try again." : "Something went wrong — please try again.";
-    throw new ApiError(msg, res.status);
+    const body = json as { message?: unknown; data?: unknown } | null;
+    const m = body?.message;
+    const msg = res.status === 429 ? t("err_too_many") : typeof m === "string" && m ? m : Array.isArray(m) && m.length ? String(m[0]) : t("err_generic");
+    throw new ApiError(msg, res.status, (body?.data && typeof body.data === "object" ? body.data : body ?? undefined) as Record<string, unknown> | undefined);
   }
   // The gateway wraps replies as { code, message, data }.
   if (json && typeof json === "object" && "data" in json && "code" in json) return (json as { data: T }).data;
@@ -124,20 +141,30 @@ export const api = {
   checkOut: (b: { selfieKey: string; latitude: number; longitude: number; accuracy?: number }) =>
     call<Attendance>("POST", "/oncall/public/me/check-out", b, 30_000),
 
-  /** Presign, then PUT the photo straight to storage; returns the object key. */
-  async uploadPhoto(kind: "selfie_in" | "selfie_out", blob: Blob): Promise<string> {
-    const { uploadUrl, objectKey } = await call<{ uploadUrl: string; objectKey: string }>("POST", "/oncall/public/me/documents/presign-upload", {
-      docType: kind,
-      ext: "jpg",
-      mimeType: "image/jpeg",
-    });
-    let put: Response;
-    try {
-      put = await fetch(uploadUrl, { method: "PUT", body: blob, headers: { "Content-Type": "image/jpeg" } });
-    } catch {
-      throw new ApiError("The photo didn't upload — check your internet and try again.");
-    }
-    if (!put.ok) throw new ApiError(`The photo didn't upload (${put.status}) — please try again.`);
-    return objectKey;
-  },
+  /** Check-in / check-out photo: presign, then PUT straight to storage; returns the object key. */
+  uploadPhoto: (kind: "selfie_in" | "selfie_out", blob: Blob) => upload(kind, blob, "jpg", "image/jpeg"),
+
+  // ── Join (registration) — the same public routes the mobile app's on-call sign-up uses ──
+  /** Creates the draft on the first call (name + gender), then saves any field. */
+  updateMe: (b: { name?: string; dob?: string; gender?: string; passbookKey?: string; photoKey?: string }) => call<Reliever>("PATCH", "/oncall/public/me", b),
+  verifyAadhaar: (aadhaarNo: string) => call<Reliever>("POST", "/oncall/public/me/aadhaar", { aadhaarNo }, 45_000),
+  verifyBank: (b: { accountNo: string; ifsc: string }) => call<Reliever>("POST", "/oncall/public/me/bank", b, 45_000),
+  complete: () => call<Reliever>("POST", "/oncall/public/me/complete"),
+  uploadDoc: (kind: "passbook" | "photo", blob: Blob, ext: string, mimeType: string) => upload(kind, blob, ext, mimeType),
 };
+
+async function upload(docType: string, blob: Blob, ext: string, mimeType: string): Promise<string> {
+  const { uploadUrl, objectKey } = await call<{ uploadUrl: string; objectKey: string }>("POST", "/oncall/public/me/documents/presign-upload", {
+    docType,
+    ext,
+    mimeType,
+  });
+  let put: Response;
+  try {
+    put = await fetch(uploadUrl, { method: "PUT", body: blob, headers: { "Content-Type": mimeType } });
+  } catch {
+    throw new ApiError(t("err_upload"));
+  }
+  if (!put.ok) throw new ApiError(t("err_upload_status", { status: put.status }));
+  return objectKey;
+}
