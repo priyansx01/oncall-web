@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { IoBanOutline, IoCalendar, IoCalendarOutline, IoHome, IoHomeOutline, IoPerson, IoPersonOutline, IoRefresh } from "react-icons/io5";
 import { api, type Attendance, type Me } from "../api";
 import { crumb } from "../crash";
+import { useBack } from "../shell";
 import { useLang } from "../i18n";
 import { useInstall } from "../install";
 import { message } from "../lib";
@@ -52,6 +53,7 @@ export function Main({ mobile, onSignOut }: { mobile: string; onSignOut: () => v
   const [installOpen, setInstallOpen] = useState(false);
   const [now, setNow] = useState(Date.now());
   const install = useInstall();
+  useBack(() => setTab("home"), tab !== "home" && !flow);
 
   const reload = useCallback(async () => {
     try {

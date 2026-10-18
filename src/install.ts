@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { inApp } from "./shell";
 
 // Chrome / Brave / Edge / Samsung fire `beforeinstallprompt` once the page is installable.
 // It can fire before React mounts, so it is caught here at import time and kept.
@@ -48,7 +49,8 @@ export function useInstall(): InstallState {
     return () => bus.removeEventListener("change", on);
   }, []);
   return {
-    show: !isStandalone(),
+    // Inside the iSmart app there is nothing to install.
+    show: !isStandalone() && !inApp(),
     canPrompt: !!deferred,
     ios: isIOS(),
     prompt: async () => {

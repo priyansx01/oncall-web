@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { IoCameraReverseOutline, IoClose, IoImageOutline } from "react-icons/io5";
 import { t } from "./i18n";
+import { useBack } from "./shell";
 
 // A plain photo — no face matching — with the place and time burned into it:
 // ON id + name, site, date/time (IST) and the GPS coordinates with accuracy.
@@ -49,6 +50,7 @@ export function CameraScreen({ title, stampLines, onCancel, onShot }: { title: s
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  useBack(onCancel);
 
   useEffect(() => {
     let cancelled = false;

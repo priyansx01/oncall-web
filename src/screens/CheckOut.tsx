@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { IoArrowBack, IoCheckmarkDone, IoClose } from "react-icons/io5";
 import { useLang } from "../i18n";
+import { useBack } from "../shell";
 import { api, type Attendance, type Reliever } from "../api";
 import { fmtMins, fmtTime, message, minutesWorked } from "../lib";
 import { Button, Card, ErrorBanner, FlowHeader, IconCircle, KeyValueRow, Stepper } from "../ui";
@@ -14,6 +15,7 @@ export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Re
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState<Attendance | null>(null);
   const site = open.siteName ?? open.siteCode;
+  useBack(() => (done || step === 0 ? onClose() : setStep(0)));
   const shot = usePhoto((f) => stampLines(reliever.oncallCode, reliever.name, site, f));
 
   const submit = async () => {

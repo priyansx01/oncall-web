@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { IoArrowBack, IoCallOutline, IoChatbubbleEllipsesOutline, IoDownloadOutline, IoPersonAddOutline, IoShieldCheckmarkOutline } from "react-icons/io5";
 import { api, type Session } from "../api";
 import { crumb } from "../crash";
+import { useBack } from "../shell";
 import { useLang } from "../i18n";
 import { useInstall } from "../install";
 import { message } from "../lib";
@@ -55,6 +56,9 @@ export function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
   const [installOpen, setInstallOpen] = useState(false);
+  // App back button: from the code screen back to the number; from Join back to Sign in.
+  useBack(() => (setSent(false), setError(null)), sent);
+  useBack(() => setMode("signin"), !sent && mode === "join");
 
   useEffect(() => {
     crumb(`screen:signin/${sent ? "otp" : mode}`);

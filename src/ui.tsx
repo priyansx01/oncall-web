@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { IoAlertCircle, IoCheckmark, IoClose, IoLocation } from "react-icons/io5";
 import { t } from "./i18n";
+import { useBack } from "./shell";
 
 // Primitives copied from the SmartFM Reliever app's design (src/components/primitives there).
 
@@ -135,6 +136,7 @@ export function EmptyState({ icon, title, body, action }: { icon: ReactNode; tit
 
 /** Bottom sheet with a dimmed backdrop (the reference ConfirmationSheet). */
 export function Sheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  useBack(onClose, open);
   if (!open) return null;
   return (
     <div className="sheet-overlay" onClick={onClose}>

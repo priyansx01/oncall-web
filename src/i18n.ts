@@ -69,7 +69,17 @@ export async function setLang(code: LangCode): Promise<void> {
 /** Loads the saved language before the first render. */
 export async function initLang(): Promise<void> {
   const s = saved();
-  if (s && s !== "en") await setLang(s);
+  if (s) {
+    if (s !== "en") await setLang(s);
+    return;
+  }
+  // Opened from the iSmart app (?lang=hi): start in the app's language, no picker.
+  try {
+    const fromApp = new URLSearchParams(location.search).get("lang");
+    if (fromApp && LANGS.some((l) => l.code === fromApp)) await setLang(fromApp as LangCode);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function currentLang() {

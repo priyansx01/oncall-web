@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { IoArrowBack, IoBusinessOutline, IoCheckmark, IoClose, IoHelpCircleOutline, IoRefresh, IoSearch, IoShieldCheckmarkOutline, IoWarningOutline } from "react-icons/io5";
 import { useLang } from "../i18n";
+import { useBack } from "../shell";
 import { api, type Attendance, type Reliever, type Site } from "../api";
 import { fmtDist, fmtTime, getFix, message, type Fix } from "../lib";
 import { Button, Card, ErrorBanner, FlowHeader, IconCircle, KeyValueRow, LocationSummary, Spinner, Stepper } from "../ui";
@@ -27,6 +28,8 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
   const reportedName = reported.replace(/\s+/g, " ").trim();
   const siteLabel = unlisted ? reportedName : (site?.siteName ?? "");
   const ready = unlisted ? reportedName.length >= 3 : !!site;
+  // App back button: a step back, or out of the flow from the first step / the done screen.
+  useBack(() => (done || step === 0 ? onClose() : setStep(step - 1)));
   const shot = usePhoto((f) => stampLines(reliever.oncallCode, reliever.name, unlisted ? `${reportedName} · NOT IN SITE LIST` : (site?.siteName ?? ""), f));
 
   const locate = useCallback(async () => {
