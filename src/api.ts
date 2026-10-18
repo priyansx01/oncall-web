@@ -24,6 +24,7 @@ export type Reliever = {
   accountNo: string | null;
   ifsc: string | null;
   bankName: string | null;
+  accountHolder: string | null;
   bankStatus: KycStatus;
   passbookKey: string | null;
   status: "draft" | "active" | "inactive";
@@ -31,6 +32,18 @@ export type Reliever = {
   missing: string[];
   /** Set by the Aadhaar / bank checks when the provider was down (saved for manual review). */
   kycMessage?: string | null;
+  /** The bank's own answer after a successful bank check, for the person to confirm. */
+  bankCheck?: BankCheck | null;
+};
+
+export type BankCheck = {
+  accountHolder: string | null;
+  bankName: string | null;
+  branch: string | null;
+  city: string | null;
+  state: string | null;
+  address: string | null;
+  ifsc: string;
 };
 
 export type Attendance = {

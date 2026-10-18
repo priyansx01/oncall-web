@@ -21,7 +21,6 @@
   "hours_mins": "{h}h {m}m",
   "crash_title": "Something went wrong",
   "crash_body": "The app hit a problem and we have been told about it. Tap Reload to continue.",
-
   "welcome": "Welcome",
   "signin_intro": "Sign in with your mobile number. We send a code by SMS.",
   "join_title": "Join as On-call Reliever",
@@ -51,7 +50,6 @@
   "android_step2": "Tap Install app or Add to Home screen.",
   "android_step3": "Tap Install. The iSmart On-call icon appears on your home screen.",
   "install_chrome_hint": "Don't see it? Open oncall.ismartfacitech.com in Google Chrome and try again.",
-
   "err_mobile": "Enter your 10-digit mobile number.",
   "err_send_otp": "Couldn't send the code.",
   "err_otp": "Enter the 6-digit code from the SMS.",
@@ -72,7 +70,6 @@
   "err_search": "Search failed.",
   "err_check_in": "Check-in failed.",
   "err_check_out": "Check-out failed.",
-
   "s_name": "Name",
   "s_aadhaar": "Aadhaar",
   "s_bank": "Bank",
@@ -125,7 +122,6 @@
   "sign_out": "Sign out",
   "sign_out_title": "Sign out?",
   "sign_out_body": "You will need a new SMS code to sign in again.",
-
   "perm_title": "Allow access",
   "perm_intro": "Two permissions are needed to check you in at a site.",
   "perm_location": "Location",
@@ -134,7 +130,6 @@
   "perm_camera_why": "Takes a photo at check-in and check-out, with the time and place on it.",
   "perm_blocked": "Permission is blocked. Tap the lock icon next to the address (or the browser's site settings), allow it, then tap Try again.",
   "perm_allow": "Allow access",
-
   "tab_home": "Home",
   "tab_attendance": "Attendance",
   "tab_profile": "Profile",
@@ -158,7 +153,6 @@
   "end_work_body": "You have worked {time} at {site}. Check out only when you are leaving — you will take a photo next.",
   "not_yet": "Not yet",
   "yes_check_out": "Yes, check out",
-
   "working_now": "working now",
   "todays_timeline": "Today's timeline",
   "not_checked_in_today": "You haven't checked in today.",
@@ -173,13 +167,11 @@
   "st_rejected": "Not approved",
   "st_working": "Working",
   "st_pending": "Being checked",
-
   "how_it_works": "How it works",
   "how_it_works_sub": "Check-in, photo and pay",
   "help_1": "When you reach the site, tap Clock in / out, pick the site and take a photo. The photo shows your ID, the site, the time and your location.",
   "help_2": "When you leave, tap the card again to check out with a photo.",
   "help_3": "Operations check each day and match it to the absent employee you covered. Approved days are paid at your daily rate.",
-
   "check_in": "Check in",
   "check_out": "Check out",
   "step_site": "Choose site",
@@ -227,11 +219,20 @@
   "checked_out_title": "Checked out",
   "checked_out_body": "Thanks for today. Operations will check and approve the day.",
   "total_duration": "Total duration",
-
   "cam_unsupported": "This browser can't open the camera here — use Phone camera.",
   "cam_blocked": "The camera didn't open. Allow camera for this site, or use Phone camera.",
   "cam_hint": "Keep your face and the site in the frame",
   "cam_opening": "Opening camera…",
   "cam_phone": "Phone camera",
-  "cam_switch": "Switch camera"
+  "cam_switch": "Switch camera",
+  "bank_confirm_title": "Is this your bank account?",
+  "bank_confirm_body": "Your bank sent these details. Check that the account is in your name.",
+  "bank_holder": "Account holder",
+  "bank_name": "Bank",
+  "bank_branch": "Branch",
+  "bank_city": "City",
+  "bank_name_mismatch": "The name on this account doesn't match {name}. Payment is sent only to your own account.",
+  "bank_yes_mine": "Yes, this is my account",
+  "bank_no_change": "No, change details",
+  "change_account": "Change account"
 }

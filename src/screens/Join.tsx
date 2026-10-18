@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   IoCamera,
   IoCheckmark,
+  IoBusinessOutline,
   IoCheckmarkCircle,
   IoClose,
   IoDocumentAttachOutline,
@@ -9,12 +10,12 @@ import {
   IoLocationOutline,
   IoRefresh,
 } from "react-icons/io5";
-import { ApiError, api, type Reliever } from "../api";
+import { ApiError, api, type BankCheck, type Reliever } from "../api";
 import { CameraScreen, shrinkImage } from "../camera";
 import { crumb } from "../crash";
 import { useLang, type TKey } from "../i18n";
 import { fmtStamp, getFix, message, type Fix } from "../lib";
-import { Button, Card, ErrorBanner, FlowHeader, IconCircle, KeyValueRow, Stepper } from "../ui";
+import { Button, Card, ErrorBanner, FlowHeader, IconCircle, KeyValueRow, Sheet, Stepper } from "../ui";
 import { markPermissionsGranted } from "./Permissions";
 
 /** 0 name · 1 Aadhaar · 2 bank + passbook · 3 photo · 4 done — the same rule as the mobile app. */
@@ -49,6 +50,9 @@ export function Join({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // After a successful bank check: the bank's answer, shown for the person to confirm.
+  const [bankCheck, setBankCheck] = useState<BankCheck | null>(null);
+  const [editBank, setEditBank] = useState(false);
   const step = stepOf(r);
 
   useEffect(() => {
@@ -110,7 +114,17 @@ export function Join({
           <BankStep
             r={r}
             busy={busy}
-            onVerify={(b) => run("bank", () => api.verifyBank(b))}
+            editing={editBank}
+            onEdit={() => setEditBank(true)}
+            onCancelEdit={() => setEditBank(false)}
+            onVerify={(b) =>
+              run("bank", async () => {
+                const res = await api.verifyBank(b);
+                setEditBank(false);
+                if (res.bankCheck) setBankCheck(res.bankCheck);
+                return res;
+              })
+            }
             onPassbook={(blob, ext, mime) =>
               run("passbook", async () => {
                 const key = await api.uploadDoc("passbook", blob, ext, mime);
@@ -138,7 +152,78 @@ export function Join({
         {notice && <Card className="intro-card plain">{notice}</Card>}
         {error && <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>}
       </div>
+      <BankConfirmSheet
+        check={bankCheck}
+        accountNo={r?.accountNo ?? null}
+        name={r?.name ?? null}
+        onYes={() => setBankCheck(null)}
+        onNo={() => {
+          setBankCheck(null);
+          setEditBank(true);
+        }}
+      />
     </div>
+  );
+}
+
+/** True when the bank's account holder shares at least one name word with the Aadhaar name. */
+function namesMatch(a: string | null, b: string | null): boolean {
+  const words = (s: string | null) => new Set((s ?? "").toUpperCase().replace(/[^A-Z ]/g, " ").split(/\s+/).filter((w) => w.length > 1));
+  const x = words(a);
+  const y = words(b);
+  if (!x.size || !y.size) return true; // nothing to compare: don't alarm
+  for (const w of x) if (y.has(w)) return true;
+  return false;
+}
+
+/** "Is this your bank account?" — what the bank returned, confirmed by the person before going on. */
+function BankConfirmSheet({
+  check,
+  accountNo,
+  name,
+  onYes,
+  onNo,
+}: {
+  check: BankCheck | null;
+  accountNo: string | null;
+  name: string | null;
+  onYes: () => void;
+  onNo: () => void;
+}) {
+  const { t } = useLang();
+  if (!check) return null;
+  const place = [check.city, check.state].filter(Boolean).join(", ");
+  const mismatch = !namesMatch(check.accountHolder, name);
+  return (
+    <Sheet open onClose={onYes}>
+      <div className="sheet-head">
+        <IconCircle size={64}>
+          <IoBusinessOutline size={30} />
+        </IconCircle>
+        <h3>{t("bank_confirm_title")}</h3>
+        <p className="muted">{t("bank_confirm_body")}</p>
+      </div>
+      {check.accountHolder && (
+        <div className="holder-card">
+          <span>{t("bank_holder")}</span>
+          <b>{check.accountHolder}</b>
+        </div>
+      )}
+      <Card className="kv-card">
+        {check.bankName && <KeyValueRow label={t("bank_name")} value={check.bankName} />}
+        {check.branch && <KeyValueRow label={t("bank_branch")} value={check.branch} />}
+        {place && <KeyValueRow label={t("bank_city")} value={place} />}
+        <KeyValueRow label={t("oc_ifsc_label")} value={check.ifsc} />
+        {accountNo && <KeyValueRow label={t("oc_acc_label")} value={`•••• ${accountNo.slice(-4)}`} />}
+      </Card>
+      {mismatch && <ErrorBanner>{t("bank_name_mismatch", { name })}</ErrorBanner>}
+      <div className="sheet-actions">
+        <Button variant="secondary" onClick={onNo}>
+          {t("bank_no_change")}
+        </Button>
+        <Button onClick={onYes}>{t("bank_yes_mine")}</Button>
+      </div>
+    </Sheet>
   );
 }
 
@@ -233,12 +318,18 @@ function AadhaarStep({ busy, onVerify }: { busy: string | null; onVerify: (no: s
 function BankStep({
   r,
   busy,
+  editing,
+  onEdit,
+  onCancelEdit,
   onVerify,
   onPassbook,
   onError,
 }: {
   r: Reliever;
   busy: string | null;
+  editing: boolean;
+  onEdit: () => void;
+  onCancelEdit: () => void;
   onVerify: (b: { accountNo: string; ifsc: string }) => void;
   onPassbook: (blob: Blob, ext: string, mime: string) => void;
   onError: (m: string) => void;
@@ -272,7 +363,7 @@ function BankStep({
     }
   };
 
-  if (!r.bankStatus) {
+  if (!r.bankStatus || editing) {
     return (
       <>
         <div className="step-intro">
@@ -306,6 +397,11 @@ function BankStep({
         <Button loading={busy === "bank"} onClick={verify}>
           {t("oc_verify_bank")}
         </Button>
+        {editing && r.bankStatus && (
+          <Button variant="ghost" disabled={busy === "bank"} onClick={onCancelEdit}>
+            {t("cancel")}
+          </Button>
+        )}
       </>
     );
   }
@@ -319,6 +415,8 @@ function BankStep({
       <Card className="kv-card">
         <KeyValueRow label={t("oc_acc_label")} value={r.accountNo ? `•••• ${r.accountNo.slice(-4)}` : "—"} />
         <KeyValueRow label={t("oc_ifsc_label")} value={r.ifsc ?? "—"} />
+        {r.accountHolder && <KeyValueRow label={t("bank_holder")} value={r.accountHolder} />}
+        {r.bankName && <KeyValueRow label={t("bank_name")} value={r.bankName} />}
         <KeyValueRow
           label={t("s_bank")}
           value={
@@ -328,6 +426,9 @@ function BankStep({
           }
         />
       </Card>
+      <button className="text-btn center-self" onClick={onEdit} disabled={!!busy}>
+        {t("change_account")}
+      </button>
       <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => (void pick(e.target.files?.[0]), (e.target.value = ""))} />
       <input ref={fileInput} type="file" accept="image/*,application/pdf" hidden onChange={(e) => (void pick(e.target.files?.[0]), (e.target.value = ""))} />
       <div className="two-btns">
