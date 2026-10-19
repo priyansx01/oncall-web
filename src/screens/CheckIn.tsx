@@ -1,14 +1,22 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { IoArrowBack, IoBusinessOutline, IoCheckmark, IoClose, IoHelpCircleOutline, IoRefresh, IoSearch, IoShieldCheckmarkOutline, IoWarningOutline } from "react-icons/io5";
 import { useLang } from "../i18n";
 import { useBack } from "../shell";
-import { api, type Attendance, type Reliever, type Site } from "../api";
-import { fmtDist, fmtTime, getFix, message, type Fix } from "../lib";
+import { api, ApiError, type Attendance, type Me, type Reliever, type Site } from "../api";
+import { FAR_FROM_SITE_M, PHOTO_MAX_AGE_MS, distanceM, fmtDist, fmtTime, getFix, message, type Fix } from "../lib";
 import { Button, Card, ErrorBanner, FlowHeader, IconCircle, KeyValueRow, LocationSummary, Spinner, Stepper } from "../ui";
-import { PhotoStep, stampLines, usePhoto } from "./PhotoStep";
+import { AccuracyHint, PhotoStep, stampLines, usePhoto } from "./PhotoStep";
+import { useUploadOnce } from "./useUploadOnce";
 
 
-export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever; onClose: () => void; onDone: () => Promise<void> }) {
+/** Distance from the photo's point to the site, when the site has coordinates. */
+function photoDistance(site: Site | null, f: Fix | undefined): number | null {
+  if (!site || !f || site.latitude == null || site.longitude == null) return site?.distanceM ?? null;
+  return distanceM(f.lat, f.lng, site.latitude, site.longitude);
+}
+
+/** onDone reloads the person's days and returns them (null when the reload failed). */
+export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever; onClose: () => void; onDone: () => Promise<Me | null> }) {
   const { t } = useLang();
   const [step, setStep] = useState(0);
   const [fix, setFix] = useState<Fix | null>(null);
@@ -28,8 +36,13 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
   const reportedName = reported.replace(/\s+/g, " ").trim();
   const siteLabel = unlisted ? reportedName : (site?.siteName ?? "");
   const ready = unlisted ? reportedName.length >= 3 : !!site;
+  // "Not in list" switched on by itself (nothing within 2 km): a later Refresh that finds
+  // sites switches it off again. Switched on by the person: left alone.
+  const autoUnlisted = useRef(false);
+  const upload = useUploadOnce("selfie_in");
   // App back button: a step back, or out of the flow from the first step / the done screen.
-  useBack(() => (done || step === 0 ? onClose() : setStep(step - 1)));
+  // Not while submitting — the check-in would finish with nobody watching.
+  useBack(() => (busy ? undefined : done || step === 0 ? onClose() : setStep(step - 1)));
   const shot = usePhoto((f) => stampLines(reliever.oncallCode, reliever.name, unlisted ? `${reportedName} · NOT IN SITE LIST` : (site?.siteName ?? ""), f));
 
   const locate = useCallback(async () => {
@@ -42,15 +55,26 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
       setSites(list);
       setSearched(false);
       // The nearest site is preselected when it is close enough to be where they are.
-      setSite((cur) => (cur && list.some((s) => s.siteCode === cur.siteCode) ? cur : list[0] && (list[0].distanceM ?? 99999) <= 500 ? list[0] : null));
+      // Only on a good enough fix: a ±1 km reading would pick a wrong "nearest" site.
+      setSite((cur) =>
+        cur && list.some((s) => s.siteCode === cur.siteCode) ? cur : list[0] && (list[0].distanceM ?? 99999) <= 500 && f.acc <= 100 ? list[0] : null,
+      );
       // Nothing within 2 km: offer "not in the list" straight away.
-      if (list.length === 0) setUnlisted(true);
+      if (list.length === 0) {
+        setUnlisted((u) => {
+          if (!u) autoUnlisted.current = true;
+          return true;
+        });
+      } else if (autoUnlisted.current) {
+        autoUnlisted.current = false;
+        setUnlisted(false);
+      }
     } catch (e) {
       setLocError(message(e, t("err_sites")));
     } finally {
       setLocating(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void locate();
@@ -75,17 +99,34 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
   const submit = async () => {
     const p = shot.photo;
     if (!p || !ready) return;
+    // The photo's time and place are on its stamp: an old photo is retaken.
+    if (Date.now() - p.fix.at > PHOTO_MAX_AGE_MS) {
+      shot.reset();
+      setStep(1);
+      shot.setError(t("err_photo_old"));
+      return;
+    }
     setBusy(true);
     setSubmitError(null);
     try {
-      const key = await api.uploadPhoto("selfie_in", p.blob);
-      const point = { selfieKey: key, latitude: p.fix.lat, longitude: p.fix.lng, accuracy: p.fix.acc };
+      const key = await upload(p.blob);
+      const point = { selfieKey: key, latitude: p.fix.lat, longitude: p.fix.lng, accuracy: p.fix.acc, photoSource: p.source };
       const a = unlisted
         ? await api.checkIn({ ...point, siteCode: "", unlisted: true, reportedSite: reportedName })
         : await api.checkIn({ ...point, siteCode: site!.siteCode });
       setDone(a);
       void onDone();
     } catch (e) {
+      // A timeout or "already checked in" may mean this very check-in was saved (a slow
+      // network, a second tap on another phone): look before showing an error.
+      const status = e instanceof ApiError ? e.status : undefined;
+      if (status === 409 || status === undefined || status >= 500) {
+        const me = await onDone();
+        if (me?.open && Date.now() - new Date(me.open.checkInAt).getTime() < 10 * 60_000) {
+          setDone(me.open);
+          return;
+        }
+      }
       setSubmitError(message(e, t("err_check_in")));
     } finally {
       setBusy(false);
@@ -121,7 +162,8 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
     );
   }
 
-  const back = () => (step === 0 ? onClose() : setStep(step - 1));
+  const back = () => (busy ? undefined : step === 0 ? onClose() : setStep(step - 1));
+  const photoDist = photoDistance(site, shot.photo?.fix);
 
   return (
     <div className="flow">
@@ -143,6 +185,7 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
               title={fix ? t("location_accuracy_value", { m: fix.acc }) : locating ? t("finding_location") : t("location_not_found")}
               sub={fix ? t("updated_at", { time: fmtTime(new Date(fix.at).toISOString()) }) : t("gps_on")}
             />
+            {fix && <AccuracyHint fix={fix} />}
 
             <div className="row-between">
               <h3 className="sub-title">{searched ? t("search_results") : t("sites_near")}</h3>
@@ -167,6 +210,7 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
                   <button key={s.siteCode} className={`site-option${sel ? " selected" : ""}`} onClick={() => {
                       // The site is printed on the photo, so a different site needs a new photo.
                       if (!sel || unlisted) shot.reset();
+                      autoUnlisted.current = false;
                       setUnlisted(false);
                       setSite(s);
                     }}>
@@ -196,6 +240,7 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
               className={`site-option unlisted-option${unlisted ? " selected" : ""}`}
               onClick={() => {
                 if (!unlisted) shot.reset();
+                autoUnlisted.current = false;
                 setUnlisted(true);
               }}
             >
@@ -208,6 +253,13 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
               </div>
               <span className={`radio${unlisted ? " on" : ""}`}>{unlisted && <IoCheckmark size={14} />}</span>
             </button>
+
+            {!unlisted && site && (site.distanceM ?? 0) > FAR_FROM_SITE_M && (
+              <Card className="warn-card">
+                <IoWarningOutline size={20} />
+                <span>{t("far_from_site", { dist: fmtDist(site.distanceM), site: site.siteName })}</span>
+              </Card>
+            )}
 
             {unlisted && (
               <Card className="unlisted-card">
@@ -261,10 +313,22 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
             <Card className="kv-card">
               <KeyValueRow label={t("site")} value={siteLabel} />
               {!unlisted && site?.clientName && <KeyValueRow label={t("client")} value={site.clientName} />}
-              {!unlisted && site?.distanceM != null && <KeyValueRow label={t("distance_from_site")} value={fmtDist(site.distanceM)} />}
+              {!unlisted && photoDist != null && <KeyValueRow label={t("distance_from_site")} value={fmtDist(photoDist)} />}
               <KeyValueRow label={t("photo_taken")} value={fmtTime(new Date(shot.photo.fix.at).toISOString())} />
               <KeyValueRow label={t("location_accuracy")} value={`±${shot.photo.fix.acc} m`} />
             </Card>
+            {!unlisted && photoDist != null && photoDist > FAR_FROM_SITE_M && (
+              <Card className="warn-card">
+                <IoWarningOutline size={20} />
+                <span>{t("far_from_site_confirm", { dist: fmtDist(photoDist), site: siteLabel })}</span>
+              </Card>
+            )}
+            {shot.photo.source === "file" && (
+              <Card className="warn-card">
+                <IoWarningOutline size={20} />
+                <span>{t("photo_from_phone_note")}</span>
+              </Card>
+            )}
             {unlisted && <Card className="intro-card plain">{t("unlisted_confirm_note")}</Card>}
             {submitError && <ErrorBanner onClose={() => setSubmitError(null)}>{submitError}</ErrorBanner>}
           </>

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { IoCamera, IoRefresh } from "react-icons/io5";
 import { CameraScreen } from "../camera";
-import { fmtStamp, getFix, message, type Fix } from "../lib";
+import { accuracyTone, fmtStamp, getFix, message, type Fix } from "../lib";
+import type { PhotoSource } from "../api";
 import { t } from "../i18n";
 import { Button, ErrorBanner, LocationSummary } from "../ui";
 
-export type Photo = { blob: Blob; url: string; fix: Fix };
+export type Photo = { blob: Blob; url: string; fix: Fix; source: PhotoSource };
 
 /** Stamp burned into every photo: ON id + name, site, IST time, GPS ± accuracy. */
 export function stampLines(code: string | null, name: string | null, siteName: string, f: Fix): string[] {
@@ -41,8 +42,8 @@ export function usePhoto(stampFor: (f: Fix) => string[]) {
       title={t("take_photo")}
       stampLines={stampFor(camFix)}
       onCancel={() => setCamFix(null)}
-      onShot={(blob) => {
-        setPhoto({ blob, url: URL.createObjectURL(blob), fix: camFix });
+      onShot={(blob, source) => {
+        setPhoto({ blob, url: URL.createObjectURL(blob), fix: camFix, source });
         setCamFix(null);
       }}
     />
@@ -66,6 +67,7 @@ export function PhotoStep({ photo, locating, error, onTake, intro }: { photo: Ph
             <img src={photo.url} alt="" />
           </div>
           <LocationSummary title={t("location_accuracy_value", { m: photo.fix.acc })} sub={`${photo.fix.lat.toFixed(5)}, ${photo.fix.lng.toFixed(5)}`} />
+          <AccuracyHint fix={photo.fix} />
           <Button variant="secondary" icon={<IoRefresh size={18} />} loading={locating} onClick={onTake}>
             {t("retake_photo")}
           </Button>
@@ -79,5 +81,16 @@ export function PhotoStep({ photo, locating, error, onTake, intro }: { photo: Ph
       )}
       {error && <ErrorBanner>{error}</ErrorBanner>}
     </>
+  );
+}
+
+/** Green / amber / red line under a GPS reading, with what to do when it is weak. */
+export function AccuracyHint({ fix }: { fix: Fix }) {
+  const tone = accuracyTone(fix.acc);
+  return (
+    <p className={`acc-hint ${tone}`}>
+      <i />
+      {fix.approx ? t("acc_approx") : tone === "good" ? t("acc_good") : tone === "ok" ? t("acc_ok") : t("acc_weak")}
+    </p>
   );
 }

@@ -1,33 +1,53 @@
 import { useState } from "react";
-import { IoArrowBack, IoCheckmarkDone, IoClose } from "react-icons/io5";
+import { IoArrowBack, IoCheckmarkDone, IoClose, IoWarningOutline } from "react-icons/io5";
 import { useLang } from "../i18n";
 import { useBack } from "../shell";
-import { api, type Attendance, type Reliever } from "../api";
-import { fmtMins, fmtTime, message, minutesWorked } from "../lib";
+import { api, ApiError, type Attendance, type Me, type Reliever } from "../api";
+import { PHOTO_MAX_AGE_MS, fmtMins, fmtTime, message, minutesWorked } from "../lib";
 import { Button, Card, ErrorBanner, FlowHeader, IconCircle, KeyValueRow, Stepper } from "../ui";
 import { PhotoStep, stampLines, usePhoto } from "./PhotoStep";
+import { useUploadOnce } from "./useUploadOnce";
 
 
-export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Reliever; open: Attendance; onClose: () => void; onDone: () => Promise<void> }) {
+/** onDone reloads the person's days and returns them (null when the reload failed). */
+export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Reliever; open: Attendance; onClose: () => void; onDone: () => Promise<Me | null> }) {
   const { t } = useLang();
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState<Attendance | null>(null);
   const site = open.siteName ?? open.siteCode;
-  useBack(() => (done || step === 0 ? onClose() : setStep(0)));
+  useBack(() => (busy ? undefined : done || step === 0 ? onClose() : setStep(0)));
   const shot = usePhoto((f) => stampLines(reliever.oncallCode, reliever.name, site, f));
+  const upload = useUploadOnce("selfie_out");
 
   const submit = async () => {
     const p = shot.photo;
     if (!p) return;
+    if (Date.now() - p.fix.at > PHOTO_MAX_AGE_MS) {
+      shot.reset();
+      setStep(0);
+      shot.setError(t("err_photo_old"));
+      return;
+    }
     setBusy(true);
     setSubmitError(null);
     try {
-      const key = await api.uploadPhoto("selfie_out", p.blob);
-      setDone(await api.checkOut({ selfieKey: key, latitude: p.fix.lat, longitude: p.fix.lng, accuracy: p.fix.acc }));
+      const key = await upload(p.blob);
+      setDone(await api.checkOut({ selfieKey: key, latitude: p.fix.lat, longitude: p.fix.lng, accuracy: p.fix.acc, photoSource: p.source }));
       void onDone();
     } catch (e) {
+      // A timeout or "not checked in" may mean this check-out was saved (slow network) or the
+      // day was closed meanwhile: look before showing an error.
+      const status = e instanceof ApiError ? e.status : undefined;
+      if (status === 409 || status === undefined || status >= 500) {
+        const me = await onDone();
+        const row = me?.recent.find((a) => a.id === open.id);
+        if (row?.checkOutAt) {
+          setDone(row);
+          return;
+        }
+      }
       setSubmitError(message(e, t("err_check_out")));
     } finally {
       setBusy(false);
@@ -66,7 +86,7 @@ export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Re
 
   return (
     <div className="flow">
-      <FlowHeader title={t("check_out")} onBack={() => (step === 0 ? onClose() : setStep(0))} icon={step === 0 ? <IoClose size={22} /> : <IoArrowBack size={22} />} />
+      <FlowHeader title={t("check_out")} onBack={() => (busy ? undefined : step === 0 ? onClose() : setStep(0))} icon={step === 0 ? <IoClose size={22} /> : <IoArrowBack size={22} />} />
       <Stepper steps={[t("step_photo"), t("step_confirm")]} current={step} />
 
       <div className="flow-body">
@@ -98,6 +118,12 @@ export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Re
               <KeyValueRow label={t("worked")} value={fmtMins(minutesWorked({ checkInAt: open.checkInAt, checkOutAt: new Date(shot.photo.fix.at).toISOString() }))} />
               <KeyValueRow label={t("location_accuracy")} value={`±${shot.photo.fix.acc} m`} />
             </Card>
+            {shot.photo.source === "file" && (
+              <Card className="warn-card">
+                <IoWarningOutline size={20} />
+                <span>{t("photo_from_phone_note")}</span>
+              </Card>
+            )}
             {submitError && <ErrorBanner onClose={() => setSubmitError(null)}>{submitError}</ErrorBanner>}
           </>
         )}

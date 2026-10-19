@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { IoCameraReverseOutline, IoClose, IoImageOutline } from "react-icons/io5";
 import { t } from "./i18n";
 import { useBack } from "./shell";
+import type { PhotoSource } from "./api";
 
 // A plain photo — no face matching — with the place and time burned into it:
 // ON id + name, site, date/time (IST) and the GPS coordinates with accuracy.
@@ -42,7 +43,18 @@ export function stampPhoto(source: CanvasImageSource, w: number, h: number, line
 }
 
 /** Full-screen camera (the reference app's dark camera screen) — a guide frame, no face check. */
-export function CameraScreen({ title, stampLines, onCancel, onShot }: { title: string; stampLines: string[]; onCancel: () => void; onShot: (photo: Blob) => void }) {
+export function CameraScreen({
+  title,
+  stampLines,
+  onCancel,
+  onShot,
+}: {
+  title: string;
+  stampLines: string[];
+  onCancel: () => void;
+  /** `file`: picked with the phone's own camera/file picker — stamped and flagged as such. */
+  onShot: (photo: Blob, source: PhotoSource) => void;
+}) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -83,7 +95,9 @@ export function CameraScreen({ title, stampLines, onCancel, onShot }: { title: s
     if (!v || !v.videoWidth) return;
     setBusy(true);
     try {
-      onShot(await stampPhoto(v, v.videoWidth, v.videoHeight, stampLines, facing === "user"));
+      onShot(await stampPhoto(v, v.videoWidth, v.videoHeight, stampLines, facing === "user"), "camera");
+    } catch {
+      setError(t("err_photo_save"));
     } finally {
       setBusy(false);
     }
@@ -93,7 +107,8 @@ export function CameraScreen({ title, stampLines, onCancel, onShot }: { title: s
     if (!f) return;
     try {
       const bmp = await createImageBitmap(f);
-      onShot(await stampPhoto(bmp, bmp.width, bmp.height, stampLines, false));
+      // Some phones offer the gallery here: the stamp says so, and ops see the day flagged.
+      onShot(await stampPhoto(bmp, bmp.width, bmp.height, [...stampLines, "FROM PHONE CAMERA / GALLERY"], false), "file");
     } catch {
       setError(t("err_file_read"));
     }

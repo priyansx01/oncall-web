@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { IoArrowForward, IoBusinessOutline, IoChevronForward, IoDownloadOutline, IoLogOutOutline, IoTimeOutline, IoCalendarOutline, IoStatsChartOutline } from "react-icons/io5";
+import { IoArrowForward, IoBusinessOutline, IoChevronForward, IoDownloadOutline, IoLogOutOutline, IoTimeOutline, IoCalendarOutline, IoStatsChartOutline, IoWarningOutline } from "react-icons/io5";
 import type { Me } from "../api";
 import type { InstallState } from "../install";
 import { fmtDay, fmtMins, fmtTime, greeting, initials, minutesWorked, statusOf, totals } from "../lib";
@@ -29,7 +29,9 @@ export function HomeTab({
   const r = me.reliever!;
   const open = me.open;
   const [confirmOut, setConfirmOut] = useState(false);
-  const tot = useMemo(() => totals(me.recent ?? [], now), [me.recent, now]);
+  const tot = useMemo(() => totals(me.recent ?? [], now, open, me.monthTotals), [me.recent, now, open, me.monthTotals]);
+  // The latest day had no check-out: say so, so it isn't a surprise when it isn't paid as is.
+  const missed = !open && me.recent[0]?.checkoutMissed ? me.recent[0] : null;
 
   return (
     <Shell
@@ -82,6 +84,13 @@ export function HomeTab({
         </div>
       </button>
 
+      {missed && (
+        <Card className="warn-card">
+          <IoWarningOutline size={20} />
+          <span>{t("missed_checkout_home", { day: fmtDay(missed.date), site: missed.siteName ?? missed.siteCode })}</span>
+        </Card>
+      )}
+
       {open && (
         <section className="block">
           <SectionHeader title={t("current_site")} />
@@ -92,7 +101,7 @@ export function HomeTab({
               </div>
               <div className="grow">
                 <div className="site-title">{open.siteName ?? open.siteCode}</div>
-                <div className="site-sub">{open.clientName ?? t("checked_in")}</div>
+                <div className="site-sub">{open.siteUnlisted ? t("site_to_confirm") : (open.clientName ?? t("checked_in"))}</div>
               </div>
               <StatusChip label={t("on_duty")} tone="success" />
             </div>
@@ -150,10 +159,13 @@ export function HomeTab({
                   </div>
                   <div className="grow">
                     <b>{fmtDay(a.date)}</b>
-                    <span>{a.siteName ?? a.siteCode}</span>
+                    <span>
+                      {a.siteName ?? a.siteCode}
+                      {a.siteUnlisted && a.siteCode === "UNLISTED" ? ` · ${t("site_to_confirm")}` : ""}
+                    </span>
                   </div>
                   <div className="right">
-                    <b>{fmtMins(minutesWorked(a, now))}</b>
+                    <b>{a.checkoutMissed ? "—" : fmtMins(minutesWorked(a, now))}</b>
                     <StatusChip label={s.label} tone={s.tone} />
                   </div>
                 </div>

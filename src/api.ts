@@ -54,19 +54,40 @@ export type Attendance = {
   date: string;
   checkInAt: string;
   checkInDistanceM: number | null;
+  checkInAccuracy?: number | null;
   checkOutAt: string | null;
+  checkOutDistanceM?: number | null;
   status: "pending" | "verified" | "rejected";
   rejectReason: string | null;
   coveredName: string | null;
+  /** Checked in at a site not in the list: ops confirm the site later. */
+  siteUnlisted?: boolean;
+  reportedSite?: string | null;
+  /** No check-out: closed at the next check-in (or open too long). Ops review the day. */
+  checkoutMissed?: boolean;
 };
 
-export type Me = { reliever: Reliever | null; open: Attendance | null; recent: Attendance[] };
+export type MonthTotals = { month: string; days: number; minutes: number };
+
+export type Me = {
+  reliever: Reliever | null;
+  open: Attendance | null;
+  recent: Attendance[];
+  /** More (older) days exist: load them with `before`. Missing on an older server. */
+  hasMore?: boolean;
+  /** This IST month's closed days, worked out on the server (not capped by the page). */
+  monthTotals?: MonthTotals;
+};
+
+export type PhotoSource = "camera" | "file";
 
 export type Site = {
   siteCode: string;
   siteName: string;
   clientName: string | null;
   city: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   distanceM: number | null;
 };
 
@@ -101,7 +122,8 @@ export function setApiSession(s: Session | null) {
   current = s;
 }
 
-/** Fired when the server rejects the token, so the app can go back to sign-in. */
+/** Fired when the server rejects the token: the app asks for the code again over the
+ *  current screen, so a check-in in progress is not lost. */
 export const onExpired = new EventTarget();
 
 async function call<T>(method: string, path: string, body?: unknown, timeoutMs = 45_000): Promise<T> {
@@ -130,11 +152,16 @@ async function call<T>(method: string, path: string, body?: unknown, timeoutMs =
     /* empty body */
   }
   if (!res.ok) {
-    if (res.status === 401 && current) onExpired.dispatchEvent(new Event("expired"));
-    const body = json as { message?: unknown; data?: unknown } | null;
+    // A wrong code on the sign-in routes is a 401 too: only other calls mean "signed out".
+    const expired = res.status === 401 && !!current && !path.includes("-otp");
+    if (expired) onExpired.dispatchEvent(new Event("expired"));
+    const body = json as { message?: unknown; data?: unknown; details?: unknown } | null;
     const m = body?.message;
-    const msg = res.status === 429 ? t("err_too_many") : typeof m === "string" && m ? m : Array.isArray(m) && m.length ? String(m[0]) : t("err_generic");
-    throw new ApiError(msg, res.status, (body?.data && typeof body.data === "object" ? body.data : body ?? undefined) as Record<string, unknown> | undefined);
+    const msg =
+      expired ? t("err_session_expired") : res.status === 429 ? t("err_too_many") : typeof m === "string" && m ? m : Array.isArray(m) && m.length ? String(m[0]) : t("err_generic");
+    // Extra fields (e.g. the ON id of an existing registration) come in `details`.
+    const extra = [body?.details, body?.data].find((v) => v && typeof v === "object") ?? body ?? undefined;
+    throw new ApiError(msg, res.status, extra as Record<string, unknown> | undefined);
   }
   // The gateway wraps replies as { code, message, data }.
   if (json && typeof json === "object" && "data" in json && "code" in json) return (json as { data: T }).data;
@@ -145,15 +172,24 @@ export const api = {
   sendOtp: (mobile: string) => call<unknown>("POST", "/oncall/public/send-otp", { mobile }),
   verifyOtp: (mobile: string, otpCode: string) =>
     call<{ onboardingToken: string; expiresIn: number; mobile: string }>("POST", "/oncall/public/verify-otp", { mobile, otpCode }),
-  me: () => call<Me>("GET", "/oncall/public/me"),
+  /** `before` (ISO check-in time): older days, for "Load older". */
+  me: (before?: string) => call<Me>("GET", `/oncall/public/me${before ? `?before=${encodeURIComponent(before)}` : ""}`),
   sitesNear: (lat: number, lng: number) => call<Site[]>("GET", `/oncall/public/sites-near?lat=${lat}&lng=${lng}`),
   searchSites: (q: string, lat?: number, lng?: number) =>
     call<Site[]>("GET", `/oncall/public/sites-near?q=${encodeURIComponent(q)}${lat != null && lng != null ? `&lat=${lat}&lng=${lng}` : ""}`),
   /** unlisted: the site is not in the list — checked in with the typed name, ops confirm it later. */
-  checkIn: (b: { siteCode: string; selfieKey: string; latitude: number; longitude: number; accuracy?: number; unlisted?: boolean; reportedSite?: string }) =>
-    call<Attendance>("POST", "/oncall/public/me/check-in", b, 30_000),
-  checkOut: (b: { selfieKey: string; latitude: number; longitude: number; accuracy?: number }) =>
-    call<Attendance>("POST", "/oncall/public/me/check-out", b, 30_000),
+  checkIn: (b: {
+    siteCode: string;
+    selfieKey: string;
+    latitude: number;
+    longitude: number;
+    accuracy?: number;
+    unlisted?: boolean;
+    reportedSite?: string;
+    photoSource?: PhotoSource;
+  }) => call<Attendance>("POST", "/oncall/public/me/check-in", b, 50_000),
+  checkOut: (b: { selfieKey: string; latitude: number; longitude: number; accuracy?: number; photoSource?: PhotoSource }) =>
+    call<Attendance>("POST", "/oncall/public/me/check-out", b, 50_000),
 
   /** Check-in / check-out photo: presign, then PUT straight to storage; returns the object key. */
   uploadPhoto: (kind: "selfie_in" | "selfie_out", blob: Blob) => upload(kind, blob, "jpg", "image/jpeg"),
@@ -174,10 +210,16 @@ async function upload(docType: string, blob: Blob, ext: string, mimeType: string
     mimeType,
   });
   let put: Response;
+  // The upload link is valid for 5 minutes; a stalled upload gives up after 60 s instead of
+  // spinning forever.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 60_000);
   try {
-    put = await fetch(uploadUrl, { method: "PUT", body: blob, headers: { "Content-Type": mimeType } });
-  } catch {
-    throw new ApiError(t("err_upload"));
+    put = await fetch(uploadUrl, { method: "PUT", body: blob, headers: { "Content-Type": mimeType }, signal: ctrl.signal });
+  } catch (err) {
+    throw new ApiError((err as Error)?.name === "AbortError" ? t("err_upload_slow") : t("err_upload"));
+  } finally {
+    clearTimeout(timer);
   }
   if (!put.ok) throw new ApiError(t("err_upload_status", { status: put.status }));
   return objectKey;

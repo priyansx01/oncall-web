@@ -10,8 +10,16 @@ import { Button, ErrorBanner } from "../ui";
 import { InstallSheet } from "./InstallSheet";
 import { LanguageButton } from "./LanguagePicker";
 
+/** Ten digits from whatever was typed or pasted: +91 / 0 prefixes dropped, extra digits ignored. */
+export function cleanMobile(v: string): string {
+  let d = v.replace(/\D/g, "");
+  if (d.length > 10 && d.startsWith("91")) d = d.slice(2);
+  else if (d.length > 10 && d.startsWith("0")) d = d.slice(1);
+  return d.slice(0, 10);
+}
+
 /** Six boxes over one real input, so SMS auto-fill and paste still work. */
-function OtpInput({ value, onChange, onDone, label }: { value: string; onChange: (v: string) => void; onDone: (code: string) => void; label: string }) {
+export function OtpInput({ value, onChange, onDone, label }: { value: string; onChange: (v: string) => void; onDone: (code: string) => void; label: string }) {
   const ref = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(true);
   return (
@@ -45,7 +53,7 @@ function OtpInput({ value, onChange, onDone, label }: { value: string; onChange:
  * Mobile + SMS code. The same sign-in serves people who are registered and people who
  * are joining: after the code, the server says which, and the app opens Home or Join.
  */
-export function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
+export function SignIn({ onSignedIn, notice }: { onSignedIn: (s: Session, joining: boolean) => void; notice?: string | null }) {
   const { t } = useLang();
   const install = useInstall();
   const [mode, setMode] = useState<"signin" | "join">("signin");
@@ -92,7 +100,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
     setError(null);
     try {
       const r = await api.verifyOtp(mobile, code);
-      onSignedIn({ token: r.onboardingToken, mobile: r.mobile || mobile, exp: Date.now() + (Number(r.expiresIn) || 3600) * 1000 });
+      onSignedIn({ token: r.onboardingToken, mobile: r.mobile || mobile, exp: Date.now() + (Number(r.expiresIn) || 3600) * 1000 }, mode === "join");
     } catch (e) {
       setError(message(e, t("err_otp_wrong")));
       setOtp("");
@@ -175,7 +183,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
               autoComplete="tel-national"
               value={mobile}
               onChange={(e) => {
-                setMobile(e.target.value.replace(/\D/g, "").slice(-10));
+                setMobile(cleanMobile(e.target.value));
                 setError(null);
               }}
               onKeyDown={(e) => e.key === "Enter" && void send()}
@@ -184,6 +192,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (s: Session) => void }) {
           </div>
         </label>
 
+        {notice && !error && <div className="notice-banner">{notice}</div>}
         {error && <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>}
 
         <Button loading={busy} disabled={mobile.length !== 10} onClick={() => void send()}>

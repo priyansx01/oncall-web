@@ -42,7 +42,8 @@ export function Join({
 }: {
   initial: Reliever | null;
   mobile: string;
-  onFinished: () => void;
+  /** Resolves true once the app has the new registration; false when that reload failed. */
+  onFinished: () => Promise<boolean>;
   onSignOut: () => void;
 }) {
   const { t } = useLang();
@@ -96,7 +97,19 @@ export function Join({
           <p className="muted">{r.status === "inactive" ? t("inactive_body", { code: r.oncallCode }) : t("join_done_body")}</p>
         </div>
         <div className="flow-footer">
-          <Button onClick={onFinished}>{t("continue")}</Button>
+          {error && <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>}
+          <Button
+            loading={busy === "finish"}
+            onClick={async () => {
+              setBusy("finish");
+              setError(null);
+              const ok = await onFinished();
+              setBusy(null);
+              if (!ok) setError(t("err_load"));
+            }}
+          >
+            {t("continue")}
+          </Button>
         </div>
       </div>
     );
@@ -108,6 +121,9 @@ export function Join({
       <Stepper steps={[t("s_name"), t("s_aadhaar"), t("s_bank"), t("s_photo")]} current={step} />
       <div className="flow-body">
         {step === 0 && !r && <Card className="intro-card plain">{t("join_not_registered", { mobile: `+91 ${mobile}` })}</Card>}
+        {initial?.status === "draft" && step === stepOf(initial) && (
+          <Card className="intro-card plain">{t("join_resume", { n: Math.max(1, 4 - step) })}</Card>
+        )}
         {step === 0 && <NameStep r={r} busy={busy} onSave={(b) => run("name", () => api.updateMe(b))} mobile={mobile} />}
         {step === 1 && <AadhaarStep busy={busy} onVerify={(no) => run("aadhaar", () => api.verifyAadhaar(no))} />}
         {step === 2 && r && (

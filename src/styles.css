@@ -2255,3 +2255,66 @@ button.menu-row:active {
 .unlisted-card .input-wrap {
   background: #fff;
 }
+
+/* ─── GPS accuracy hint (green / amber / red) ─── */
+.acc-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 2px 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.acc-hint i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.acc-hint.good {
+  color: var(--green);
+}
+.acc-hint.ok {
+  color: var(--warning);
+}
+.acc-hint.weak {
+  color: var(--danger);
+}
+
+/* ─── amber warning card (far from site, photo from phone, missed check-out) ─── */
+.warn-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--warning-bg);
+  border: 1px solid #fedf89;
+  color: var(--warning);
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 500;
+}
+.warn-card svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+/* ─── a failed refresh over the tabs ─── */
+.load-error {
+  position: sticky;
+  top: calc(var(--safe-top) + 8px);
+  z-index: 30;
+  padding: 0 16px;
+  margin-top: 8px;
+}
+
+/* ─── info line on sign-in (e.g. session expired) ─── */
+.notice-banner {
+  background: var(--info-bg);
+  color: var(--info);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { IoBanOutline, IoCalendar, IoCalendarOutline, IoHome, IoHomeOutline, IoPerson, IoPersonOutline, IoRefresh } from "react-icons/io5";
+import { IoBanOutline, IoCalendar, IoCalendarOutline, IoHome, IoHomeOutline, IoPerson, IoPersonAddOutline, IoPersonOutline, IoRefresh, IoSwapHorizontal } from "react-icons/io5";
 import { api, type Attendance, type Me } from "../api";
 import { crumb } from "../crash";
 import { useBack } from "../shell";
@@ -38,7 +38,7 @@ export function Splash({ children }: { children?: ReactNode }) {
  * After sign-in: the server says who this mobile is. Not registered (or a draft) → Join;
  * inactive → told so; active → permissions once, then Home / Attendance / Profile.
  */
-export function Main({ mobile, onSignOut }: { mobile: string; onSignOut: () => void }) {
+export function Main({ mobile, onSignOut, joinIntent = false }: { mobile: string; onSignOut: () => void; joinIntent?: boolean }) {
   const { t } = useLang();
   const [me, setMe] = useState<Me | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -46,6 +46,8 @@ export function Main({ mobile, onSignOut }: { mobile: string; onSignOut: () => v
   // `me` whenever it comes back to the foreground (camera, file picker), which must not
   // pull someone out of the middle of joining.
   const [joining, setJoining] = useState<boolean | null>(null);
+  // A number with no registration at all is told so first, then chooses Join or another number.
+  const [joinChosen, setJoinChosen] = useState(joinIntent);
   const [permsOk, setPermsOk] = useState(permissionsGranted);
   const [tab, setTab] = useState<Tab>("home");
   // The open day is kept for check-out: once it is submitted, `me.open` is gone but the summary still shows.
@@ -55,16 +57,25 @@ export function Main({ mobile, onSignOut }: { mobile: string; onSignOut: () => v
   const install = useInstall();
   useBack(() => setTab("home"), tab !== "home" && !flow);
 
-  const reload = useCallback(async () => {
+  /** Reloads the person's days; returns them, or null when it failed (the error is shown). */
+  const reload = useCallback(async (): Promise<Me | null> => {
     try {
       const m = await api.me();
       setMe(m);
       setLoadError(null);
       setJoining((j) => (j == null ? !m.reliever || m.reliever.status === "draft" : j));
+      return m;
     } catch (e) {
       setLoadError(message(e, t("err_load")));
+      return null;
     }
   }, [t]);
+  // Closing a flow always refreshes: a check-in saved on a slow network, or a day closed
+  // meanwhile, must not leave Home showing the old state.
+  const closeFlow = useCallback(() => {
+    setFlow(null);
+    void reload();
+  }, [reload]);
 
   useEffect(() => {
     void reload();
@@ -112,15 +123,21 @@ export function Main({ mobile, onSignOut }: { mobile: string; onSignOut: () => v
   }
 
   const r = me.reliever;
+  if (joining && !r && !joinChosen) {
+    return <NotRegistered mobile={mobile} onJoin={() => setJoinChosen(true)} onOtherNumber={onSignOut} />;
+  }
   if (joining) {
     return (
       <Join
         initial={r}
         mobile={mobile}
         onSignOut={onSignOut}
-        onFinished={() => {
-          setJoining(false);
-          void reload();
+        onFinished={async () => {
+          // Wait for the new registration before leaving Join, so the old (draft) state
+          // never flashes "inactive". If the reload fails, Join stays with its own error.
+          const m = await reload();
+          if (m?.reliever && m.reliever.status !== "draft") setJoining(false);
+          return !!m;
         }}
       />
     );
@@ -133,7 +150,13 @@ export function Main({ mobile, onSignOut }: { mobile: string; onSignOut: () => v
           <EmptyState
             icon={<IoBanOutline size={34} />}
             title={t("inactive_title")}
-            body={t("inactive_body", { code: r?.oncallCode ?? "" })}
+            body={
+              <>
+                {r?.oncallCode ? t("inactive_body", { code: r.oncallCode }) : t("inactive_body_nocode")}
+                <br />
+                <span className="small">{t("inactive_contact")}</span>
+              </>
+            }
           />
         </div>
         <div className="flow-footer">
@@ -149,11 +172,21 @@ export function Main({ mobile, onSignOut }: { mobile: string; onSignOut: () => v
   }
 
   if (!permsOk) return <Permissions onDone={() => setPermsOk(true)} />;
-  if (flow?.kind === "in") return <CheckInFlow reliever={r} onClose={() => setFlow(null)} onDone={reload} />;
-  if (flow?.kind === "out") return <CheckOutFlow reliever={r} open={flow.open} onClose={() => setFlow(null)} onDone={reload} />;
+  if (flow?.kind === "in") return <CheckInFlow reliever={r} onClose={closeFlow} onDone={reload} />;
+  if (flow?.kind === "out") return <CheckOutFlow reliever={r} open={flow.open} onClose={closeFlow} onDone={reload} />;
 
   return (
     <div className="tabs-page">
+      {loadError && (
+        <div className="load-error">
+          <ErrorBanner onClose={() => setLoadError(null)}>
+            {loadError}{" "}
+            <button className="text-btn" onClick={() => void reload()}>
+              {t("try_again")}
+            </button>
+          </ErrorBanner>
+        </div>
+      )}
       {tab === "home" && (
         <HomeTab
           me={me}
@@ -165,7 +198,7 @@ export function Main({ mobile, onSignOut }: { mobile: string; onSignOut: () => v
           onTab={setTab}
         />
       )}
-      {tab === "attendance" && <AttendanceTab me={me} now={now} onRefresh={reload} />}
+      {tab === "attendance" && <AttendanceTab me={me} now={now} onRefresh={async () => !!(await reload())} />}
       {tab === "profile" && <ProfileTab reliever={r} mobile={mobile} install={install} onInstall={() => void startInstall()} onSignOut={onSignOut} />}
 
       <nav className="tabbar">
@@ -184,6 +217,33 @@ export function Main({ mobile, onSignOut }: { mobile: string; onSignOut: () => v
       </nav>
 
       <InstallSheet open={installOpen} onClose={() => setInstallOpen(false)} install={install} />
+    </div>
+  );
+}
+
+/** After the code: this number has no registration. Said plainly, then Join or another number. */
+function NotRegistered({ mobile, onJoin, onOtherNumber }: { mobile: string; onJoin: () => void; onOtherNumber: () => void }) {
+  const { t } = useLang();
+  useEffect(() => {
+    crumb("screen:not-registered");
+  }, []);
+  return (
+    <div className="flow">
+      <div className="flow-body center-text">
+        <EmptyState
+          icon={<IoPersonAddOutline size={34} />}
+          title={t("not_registered_title")}
+          body={t("not_registered_body", { mobile: `+91 ${mobile}` })}
+        />
+      </div>
+      <div className="flow-footer">
+        <Button icon={<IoPersonAddOutline size={18} />} onClick={onJoin}>
+          {t("join_now")}
+        </Button>
+        <Button variant="ghost" icon={<IoSwapHorizontal size={18} />} onClick={onOtherNumber}>
+          {t("use_other_number")}
+        </Button>
+      </div>
     </div>
   );
 }
