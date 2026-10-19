@@ -271,5 +271,7 @@
   "acc_ok": "GPS is fair — wait a moment for a better reading if you can",
   "acc_weak": "Weak GPS — step outside or near a window, then tap Refresh",
   "reauth_title": "Sign in again",
-  "reauth_body": "Your sign-in has expired. We'll send a code to {mobile} — what you were doing stays on screen."
+  "reauth_body": "Your sign-in has expired. We'll send a code to {mobile} — what you were doing stays on screen.",
+  "employee_title": "You're an iSmart employee",
+  "employee_body": "This number belongs to an iSmart employee ({code}). On-call registration is only for people who don't work for iSmart — use the iSmart app for your attendance."
 }

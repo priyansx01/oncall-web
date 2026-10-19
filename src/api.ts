@@ -77,6 +77,8 @@ export type Me = {
   hasMore?: boolean;
   /** This IST month's closed days, worked out on the server (not capped by the page). */
   monthTotals?: MonthTotals;
+  /** Not registered (or a draft) and this mobile is an active iSmart employee's: they can't join. */
+  employee?: { employeeCode: string | null } | null;
 };
 
 export type PhotoSource = "camera" | "file";

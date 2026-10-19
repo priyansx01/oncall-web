@@ -123,6 +123,10 @@ export function Main({ mobile, onSignOut, joinIntent = false }: { mobile: string
   }
 
   const r = me.reliever;
+  // An iSmart employee's number can't register as on-call (the server refuses it too).
+  if (me.employee && (!r || r.status === "draft")) {
+    return <EmployeeNumber code={me.employee.employeeCode} onOtherNumber={onSignOut} />;
+  }
   if (joining && !r && !joinChosen) {
     return <NotRegistered mobile={mobile} onJoin={() => setJoinChosen(true)} onOtherNumber={onSignOut} />;
   }
@@ -217,6 +221,26 @@ export function Main({ mobile, onSignOut, joinIntent = false }: { mobile: string
       </nav>
 
       <InstallSheet open={installOpen} onClose={() => setInstallOpen(false)} install={install} />
+    </div>
+  );
+}
+
+/** After the code: the number is an iSmart employee's. On-call is only for people who aren't. */
+function EmployeeNumber({ code, onOtherNumber }: { code: string | null; onOtherNumber: () => void }) {
+  const { t } = useLang();
+  useEffect(() => {
+    crumb("screen:employee-number");
+  }, []);
+  return (
+    <div className="flow">
+      <div className="flow-body center-text">
+        <EmptyState icon={<IoBanOutline size={34} />} title={t("employee_title")} body={t("employee_body", { code: code ?? "—" })} />
+      </div>
+      <div className="flow-footer">
+        <Button variant="secondary" icon={<IoSwapHorizontal size={18} />} onClick={onOtherNumber}>
+          {t("use_other_number")}
+        </Button>
+      </div>
     </div>
   );
 }
