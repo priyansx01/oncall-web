@@ -27,6 +27,12 @@ export type Reliever = {
   accountHolder: string | null;
   bankStatus: KycStatus;
   passbookKey: string | null;
+  /** UPI payout instead of a bank account (missing on older servers). */
+  upiId?: string | null;
+  upiName?: string | null;
+  upiStatus?: KycStatus;
+  upiQrKey?: string | null;
+  upiQrPayee?: string | null;
   status: "draft" | "active" | "inactive";
   photoKey: string | null;
   missing: string[];
@@ -34,6 +40,8 @@ export type Reliever = {
   kycMessage?: string | null;
   /** The bank's own answer after a successful bank check, for the person to confirm. */
   bankCheck?: BankCheck | null;
+  /** The UPI check's answer (holder name), for the person to confirm. */
+  upiCheck?: { upiId: string; name: string | null } | null;
 };
 
 export type BankCheck = {
@@ -198,11 +206,12 @@ export const api = {
 
   // ── Join (registration) — the same public routes the mobile app's on-call sign-up uses ──
   /** Creates the draft on the first call (name + gender), then saves any field. */
-  updateMe: (b: { name?: string; dob?: string; gender?: string; passbookKey?: string; photoKey?: string }) => call<Reliever>("PATCH", "/oncall/public/me", b),
+  updateMe: (b: { name?: string; dob?: string; gender?: string; passbookKey?: string; photoKey?: string; upiQrKey?: string; upiQrPayee?: string }) => call<Reliever>("PATCH", "/oncall/public/me", b),
   verifyAadhaar: (aadhaarNo: string) => call<Reliever>("POST", "/oncall/public/me/aadhaar", { aadhaarNo }, 45_000),
   verifyBank: (b: { accountNo: string; ifsc: string }) => call<Reliever>("POST", "/oncall/public/me/bank", b, 45_000),
+  verifyUpi: (upiId: string) => call<Reliever>("POST", "/oncall/public/me/upi", { upiId }, 45_000),
   complete: () => call<Reliever>("POST", "/oncall/public/me/complete"),
-  uploadDoc: (kind: "passbook" | "photo", blob: Blob, ext: string, mimeType: string) => upload(kind, blob, ext, mimeType),
+  uploadDoc: (kind: "passbook" | "photo" | "upi_qr", blob: Blob, ext: string, mimeType: string) => upload(kind, blob, ext, mimeType),
 };
 
 async function upload(docType: string, blob: Blob, ext: string, mimeType: string): Promise<string> {

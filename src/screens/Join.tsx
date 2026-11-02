@@ -8,7 +8,9 @@ import {
   IoDocumentAttachOutline,
   IoImageOutline,
   IoLocationOutline,
+  IoQrCodeOutline,
   IoRefresh,
+  IoWalletOutline,
 } from "react-icons/io5";
 import { ApiError, api, type BankCheck, type Reliever } from "../api";
 import { CameraScreen, shrinkImage } from "../camera";
@@ -17,13 +19,19 @@ import { useLang, type TKey } from "../i18n";
 import { fmtStamp, getFix, message, type Fix } from "../lib";
 import { Button, Card, ErrorBanner, FlowHeader, IconCircle, KeyValueRow, Sheet, Stepper } from "../ui";
 import { markPermissionsGranted } from "./Permissions";
+import { UPI_RE, readUpiQr } from "../upiQr";
 
-/** 0 name · 1 Aadhaar · 2 bank + passbook · 3 photo · 4 done — the same rule as the mobile app. */
+/** Paid by bank (checked account + passbook) or by UPI (checked ID + their UPI QR) — the server's rule. */
+function paymentDone(r: Reliever): boolean {
+  return !!(r.bankStatus && r.passbookKey) || !!(r.upiId && r.upiStatus && r.upiQrKey);
+}
+
+/** 0 name · 1 Aadhaar · 2 payment (bank or UPI) · 3 photo · 4 done. */
 function stepOf(r: Reliever | null): number {
   if (!r || !r.name || !r.gender) return 0;
   if (r.status !== "draft") return 4;
   if (!r.aadhaarStatus) return 1;
-  if (!r.bankStatus || !r.passbookKey) return 2;
+  if (!paymentDone(r)) return 2;
   return 3;
 }
 
@@ -54,7 +62,15 @@ export function Join({
   // After a successful bank check: the bank's answer, shown for the person to confirm.
   const [bankCheck, setBankCheck] = useState<BankCheck | null>(null);
   const [editBank, setEditBank] = useState(false);
-  const step = stepOf(r);
+  const [upiCheck, setUpiCheck] = useState<{ upiId: string; name: string | null } | null>(null);
+  // Bank or UPI: picked on the payment step; a draft that already has one starts there.
+  const [method, setMethod] = useState<"upi" | "bank" | null>(
+    initial?.upiId || initial?.upiQrKey ? "upi" : initial?.accountNo ? "bank" : null,
+  );
+  // A just-checked UPI completes the step at once: hold it while they confirm the name, and
+  // after "No, change" until they check another ID.
+  const [upiRedo, setUpiRedo] = useState(false);
+  const step = stepOf(r) === 3 && method === "upi" && (upiCheck || upiRedo) ? 2 : stepOf(r);
 
   useEffect(() => {
     crumb(`screen:join/${step}`);
@@ -126,7 +142,30 @@ export function Join({
         )}
         {step === 0 && <NameStep r={r} busy={busy} onSave={(b) => run("name", () => api.updateMe(b))} mobile={mobile} />}
         {step === 1 && <AadhaarStep busy={busy} onVerify={(no) => run("aadhaar", () => api.verifyAadhaar(no))} />}
-        {step === 2 && r && (
+        {step === 2 && r && !method && <PayMethodStep onPick={setMethod} />}
+        {step === 2 && r && method === "upi" && (
+          <UpiStep
+            r={r}
+            busy={busy}
+            onQr={(blob, qr) =>
+              run("upi_qr", async () => {
+                const key = await api.uploadDoc("upi_qr", blob, "jpg", "image/jpeg");
+                return api.updateMe({ upiQrKey: key, upiQrPayee: qr.payee ?? "" });
+              })
+            }
+            onVerify={(upiId) =>
+              run("upi", async () => {
+                const res = await api.verifyUpi(upiId);
+                if (res.upiCheck) setUpiCheck(res.upiCheck);
+                else setUpiRedo(false);
+                return res;
+              })
+            }
+            onSwitch={() => setMethod("bank")}
+            onError={setError}
+          />
+        )}
+        {step === 2 && r && method === "bank" && (
           <BankStep
             r={r}
             busy={busy}
@@ -148,6 +187,7 @@ export function Join({
               })
             }
             onError={setError}
+            onSwitch={() => setMethod("upi")}
           />
         )}
         {step === 3 && r && (
@@ -168,6 +208,19 @@ export function Join({
         {notice && <Card className="intro-card plain">{notice}</Card>}
         {error && <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>}
       </div>
+      <UpiConfirmSheet
+        check={upiCheck}
+        name={r?.name ?? null}
+        onYes={() => {
+          setUpiCheck(null);
+          setUpiRedo(false);
+        }}
+        onNo={() => {
+          setUpiCheck(null);
+          setUpiRedo(true);
+          setError(t("upi_enter_own"));
+        }}
+      />
       <BankConfirmSheet
         check={bankCheck}
         accountNo={r?.accountNo ?? null}
@@ -340,6 +393,7 @@ function BankStep({
   onVerify,
   onPassbook,
   onError,
+  onSwitch,
 }: {
   r: Reliever;
   busy: string | null;
@@ -349,6 +403,7 @@ function BankStep({
   onVerify: (b: { accountNo: string; ifsc: string }) => void;
   onPassbook: (blob: Blob, ext: string, mime: string) => void;
   onError: (m: string) => void;
+  onSwitch: () => void;
 }) {
   const { t } = useLang();
   const [acc, setAcc] = useState("");
@@ -418,6 +473,11 @@ function BankStep({
             {t("cancel")}
           </Button>
         )}
+        {!r.bankStatus && (
+          <button className="text-btn center-self" onClick={onSwitch} disabled={!!busy}>
+            {t("use_upi_instead")}
+          </button>
+        )}
       </>
     );
   }
@@ -456,6 +516,204 @@ function BankStep({
         </Button>
       </div>
     </>
+  );
+}
+
+/** Bank or UPI — most on-call relievers are paid on UPI. */
+function PayMethodStep({ onPick }: { onPick: (m: "upi" | "bank") => void }) {
+  const { t } = useLang();
+  return (
+    <>
+      <div className="step-intro">
+        <h2>{t("pay_title")}</h2>
+        <p className="muted">{t("pay_intro")}</p>
+      </div>
+      <div className="menu-card">
+        <button className="menu-row" onClick={() => onPick("upi")}>
+          <div className="row-icon">
+            <IoQrCodeOutline size={20} />
+          </div>
+          <div className="grow">
+            <b>{t("pay_upi")}</b>
+            <span>{t("pay_upi_sub")}</span>
+          </div>
+        </button>
+        <button className="menu-row" onClick={() => onPick("bank")}>
+          <div className="row-icon">
+            <IoBusinessOutline size={20} />
+          </div>
+          <div className="grow">
+            <b>{t("pay_bank")}</b>
+            <span>{t("pay_bank_sub")}</span>
+          </div>
+        </button>
+      </div>
+    </>
+  );
+}
+
+/**
+ * UPI payout: a photo / screenshot of their "receive money" QR is read on the phone (fills the
+ * UPI ID, keeps the payee name), saved as proof, then the ID is checked (holder name shown to confirm).
+ */
+function UpiStep({
+  r,
+  busy,
+  onQr,
+  onVerify,
+  onSwitch,
+  onError,
+}: {
+  r: Reliever;
+  busy: string | null;
+  onQr: (blob: Blob, qr: { upiId: string; payee: string | null }) => void;
+  onVerify: (upiId: string) => void;
+  onSwitch: () => void;
+  onError: (m: string) => void;
+}) {
+  const { t } = useLang();
+  const [upiId, setUpiId] = useState(r.upiId ?? "");
+  const [qrId, setQrId] = useState<string | null>(null);
+  const [reading, setReading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const pick = async (f: File | undefined) => {
+    if (!f) return;
+    setErr(null);
+    setReading(true);
+    try {
+      const qr = await readUpiQr(f);
+      if (qr === "not_upi") return setErr(t("upi_err_not_upi"));
+      if (!qr) return setErr(t("upi_err_qr"));
+      setQrId(qr.upiId);
+      setUpiId(qr.upiId);
+      onQr(await shrinkImage(f), qr);
+    } catch {
+      onError(t("err_file_read"));
+    } finally {
+      setReading(false);
+    }
+  };
+
+  const verify = () => {
+    const id = upiId.replace(/\s+/g, "").toLowerCase();
+    if (!UPI_RE.test(id)) return setErr(t("upi_err_format"));
+    if (qrId && qrId !== id) return setErr(t("upi_err_mismatch", { qr: qrId }));
+    setErr(null);
+    onVerify(id);
+  };
+
+  const hasQr = !!r.upiQrKey;
+  return (
+    <>
+      <div className="step-intro">
+        <h2>{t("upi_title")}</h2>
+        <p className="muted">{t("upi_intro")}</p>
+      </div>
+      <Card className="kv-card">
+        <KeyValueRow
+          label={t("upi_qr_label")}
+          value={
+            hasQr ? (
+              <span className="ok-text">
+                <IoCheckmarkCircle size={15} /> {t("upi_qr_saved")}
+                {r.upiQrPayee ? ` · ${r.upiQrPayee}` : ""}
+              </span>
+            ) : (
+              "—"
+            )
+          }
+        />
+        {r.upiStatus && (
+          <KeyValueRow
+            label={t("upi_id_label")}
+            value={
+              <span className="ok-text">
+                <IoCheckmarkCircle size={15} /> {r.upiId} · {r.upiStatus === "verified" ? t("upi_verified") : t("upi_manual")}
+              </span>
+            }
+          />
+        )}
+      </Card>
+      <input ref={cameraInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => (void pick(e.target.files?.[0]), (e.target.value = ""))} />
+      <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => (void pick(e.target.files?.[0]), (e.target.value = ""))} />
+      <div className="two-btns">
+        <Button loading={reading || busy === "upi_qr"} icon={<IoCamera size={18} />} onClick={() => cameraInput.current?.click()}>
+          {t("take_photo")}
+        </Button>
+        <Button variant="secondary" disabled={reading || busy === "upi_qr"} icon={<IoImageOutline size={18} />} onClick={() => fileInput.current?.click()}>
+          {t("upi_screenshot")}
+        </Button>
+      </div>
+      <label className="field">
+        <span>{t("upi_id_label")}</span>
+        <div className="input-wrap">
+          <input
+            value={upiId}
+            placeholder="name@okaxis"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            inputMode="email"
+            onChange={(e) => setUpiId(e.target.value.replace(/\s+/g, "").toLowerCase().slice(0, 120))}
+          />
+        </div>
+      </label>
+      {err && <ErrorBanner onClose={() => setErr(null)}>{err}</ErrorBanner>}
+      <Button loading={busy === "upi"} disabled={!hasQr || reading} icon={<IoWalletOutline size={18} />} onClick={verify}>
+        {t("upi_verify")}
+      </Button>
+      {!hasQr && <p className="muted center-text">{t("upi_qr_first")}</p>}
+      <button className="text-btn center-self" onClick={onSwitch} disabled={!!busy}>
+        {t("use_bank_instead")}
+      </button>
+    </>
+  );
+}
+
+/** "Is this your UPI?" — the holder name the UPI check returned, confirmed before going on. */
+function UpiConfirmSheet({
+  check,
+  name,
+  onYes,
+  onNo,
+}: {
+  check: { upiId: string; name: string | null } | null;
+  name: string | null;
+  onYes: () => void;
+  onNo: () => void;
+}) {
+  const { t } = useLang();
+  if (!check) return null;
+  const mismatch = !namesMatch(check.name, name);
+  return (
+    <Sheet open onClose={onYes}>
+      <div className="sheet-head">
+        <IconCircle size={64}>
+          <IoQrCodeOutline size={30} />
+        </IconCircle>
+        <h3>{t("upi_confirm_title")}</h3>
+        <p className="muted">{t("upi_confirm_body")}</p>
+      </div>
+      {check.name && (
+        <div className="holder-card">
+          <span>{t("bank_holder")}</span>
+          <b>{check.name}</b>
+        </div>
+      )}
+      <Card className="kv-card">
+        <KeyValueRow label={t("upi_id_label")} value={check.upiId} />
+      </Card>
+      {mismatch && <ErrorBanner>{t("upi_name_mismatch", { name })}</ErrorBanner>}
+      <div className="sheet-actions">
+        <Button variant="secondary" onClick={onNo}>
+          {t("bank_no_change")}
+        </Button>
+        <Button onClick={onYes}>{t("upi_yes_mine")}</Button>
+      </div>
+    </Sheet>
   );
 }
 

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { IoCallOutline, IoCardOutline, IoChevronForward, IoDownloadOutline, IoHelpCircleOutline, IoLanguage, IoLogOutOutline } from "react-icons/io5";
+import { IoCallOutline, IoCardOutline, IoChevronForward, IoDownloadOutline, IoHelpCircleOutline, IoLanguage, IoLogOutOutline, IoWalletOutline } from "react-icons/io5";
 import type { Reliever } from "../api";
 import type { InstallState } from "../install";
 import { useLang } from "../i18n";
@@ -62,6 +62,17 @@ export function ProfileTab({
       <div className="menu-card">
         <Row icon={<IoCardOutline size={20} />} label={t("your_oncall_id")} value={reliever.oncallCode ?? "—"} />
         <Row icon={<IoCallOutline size={20} />} label={t("mobile_label")} value={`+91 ${mobile}`} />
+        {(reliever.upiId || reliever.accountNo) && (
+          <Row
+            icon={<IoWalletOutline size={20} />}
+            label={t("payment_label")}
+            value={
+              reliever.upiId
+                ? `UPI · ${reliever.upiId}${reliever.upiStatus === "verified" ? "" : ` · ${t("upi_manual")}`}`
+                : `${t("pay_bank")} · •••• ${(reliever.accountNo ?? "").slice(-4)}`
+            }
+          />
+        )}
       </div>
 
       <div className="menu-card">
