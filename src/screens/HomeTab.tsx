@@ -16,6 +16,7 @@ export function HomeTab({
   onCheckIn,
   onCheckOut,
   onTab,
+  onAddBank,
 }: {
   me: Me;
   now: number;
@@ -24,6 +25,8 @@ export function HomeTab({
   onCheckIn: () => void;
   onCheckOut: () => void;
   onTab: (t: Tab) => void;
+  /** No bank account / cheque photo on file (paid on UPI before 2026-11-04). */
+  onAddBank: () => void;
 }) {
   const { t } = useLang();
   const r = me.reliever!;
@@ -70,6 +73,19 @@ export function HomeTab({
             {t("save")}
           </Button>
         </div>
+      )}
+
+      {(!r.accountNo || !r.passbookKey) && (
+        <button className="menu-row" onClick={onAddBank}>
+          <IconCircle tone="danger" size={40}>
+            <IoWarningOutline size={20} />
+          </IconCircle>
+          <span className="grow">
+            <b>{t("addbank_prompt")}</b>
+            <span>{t("addbank_prompt_sub")}</span>
+          </span>
+          <IoChevronForward size={18} />
+        </button>
       )}
 
       <button className={`clock-card${open ? " working" : ""}`} onClick={() => (open ? setConfirmOut(true) : onCheckIn())}>

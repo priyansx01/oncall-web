@@ -561,3 +561,87 @@ function PhotoJoinStep({
     </>
   );
 }
+
+/**
+ * Registered relievers with no bank account or no passbook / cancelled cheque (paid on UPI
+ * before 2026-11-04, when on-call pay became bank only): the Home prompt opens this. The server
+ * allows adding them once; a changed account still goes through HR.
+ */
+export function AddBankFlow({ reliever, onClose, onDone }: { reliever: Reliever; onClose: () => void; onDone: () => Promise<unknown> }) {
+  const { t } = useLang();
+  const [r, setR] = useState<Reliever>(reliever);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [bankCheck, setBankCheck] = useState<BankCheck | null>(null);
+
+  const run = async (key: string, fn: () => Promise<Reliever>) => {
+    setBusy(key);
+    setError(null);
+    setNotice(null);
+    try {
+      const next = await fn();
+      setR(next);
+      if (next.kycMessage) setNotice(next.kycMessage);
+    } catch (e) {
+      setError(message(e, t("err_generic")));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const done = paymentDone(r);
+  return (
+    <div className="flow">
+      <FlowHeader title={t("addbank_title")} onBack={onClose} icon={<IoClose size={22} />} />
+      <div className="flow-body">
+        <Card className="intro-card plain">{t("addbank_body")}</Card>
+        <BankStep
+          r={r}
+          busy={busy}
+          editing={false}
+          onEdit={() => setError(t("addbank_change_hr"))}
+          onCancelEdit={() => undefined}
+          onVerify={(b) =>
+            run("bank", async () => {
+              const res = await api.verifyBank(b);
+              if (res.bankCheck) setBankCheck(res.bankCheck);
+              return res;
+            })
+          }
+          onPassbook={(blob, ext, mime) =>
+            run("passbook", async () => {
+              const key = await api.uploadDoc("passbook", blob, ext, mime);
+              return api.updateMe({ passbookKey: key });
+            })
+          }
+          onError={setError}
+        />
+        {notice && <Card className="intro-card plain">{notice}</Card>}
+        {error && <ErrorBanner onClose={() => setError(null)}>{error}</ErrorBanner>}
+      </div>
+      {done && (
+        <div className="flow-footer">
+          <Button
+            onClick={async () => {
+              await onDone();
+              onClose();
+            }}
+          >
+            {t("continue")}
+          </Button>
+        </div>
+      )}
+      <BankConfirmSheet
+        check={bankCheck}
+        accountNo={r.accountNo ?? null}
+        name={r.name ?? null}
+        onYes={() => setBankCheck(null)}
+        onNo={() => {
+          setBankCheck(null);
+          setError(t("addbank_change_hr"));
+        }}
+      />
+    </div>
+  );
+}

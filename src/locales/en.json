@@ -301,5 +301,10 @@
   "upi_enter_own": "Add your own UPI QR and UPI ID, then verify again.",
   "use_bank_instead": "Use a bank account instead",
   "use_upi_instead": "Use UPI instead",
-  "payment_label": "Payment"
+  "payment_label": "Payment",
+  "addbank_title": "Add bank account",
+  "addbank_body": "On-call pay now goes only to a bank account. Add your account and a photo of your passbook or cancelled cheque to get paid.",
+  "addbank_prompt": "Add your bank account and cheque photo to get paid",
+  "addbank_prompt_sub": "Pay is held until both are added",
+  "addbank_change_hr": "To change this bank account, please contact HR."
 }

@@ -12,7 +12,7 @@ import { CheckInFlow } from "./CheckIn";
 import { CheckOutFlow } from "./CheckOut";
 import { HomeTab } from "./HomeTab";
 import { InstallSheet } from "./InstallSheet";
-import { Join } from "./Join";
+import { AddBankFlow, Join } from "./Join";
 import { Permissions, permissionsGranted } from "./Permissions";
 import { ProfileTab } from "./ProfileTab";
 
@@ -51,7 +51,7 @@ export function Main({ mobile, onSignOut, joinIntent = false }: { mobile: string
   const [permsOk, setPermsOk] = useState(permissionsGranted);
   const [tab, setTab] = useState<Tab>("home");
   // The open day is kept for check-out: once it is submitted, `me.open` is gone but the summary still shows.
-  const [flow, setFlow] = useState<{ kind: "in" } | { kind: "out"; open: Attendance } | null>(null);
+  const [flow, setFlow] = useState<{ kind: "in" } | { kind: "out"; open: Attendance } | { kind: "bank" } | null>(null);
   const [installOpen, setInstallOpen] = useState(false);
   const [now, setNow] = useState(Date.now());
   const install = useInstall();
@@ -178,6 +178,7 @@ export function Main({ mobile, onSignOut, joinIntent = false }: { mobile: string
   if (!permsOk) return <Permissions onDone={() => setPermsOk(true)} />;
   if (flow?.kind === "in") return <CheckInFlow reliever={r} onClose={closeFlow} onDone={reload} />;
   if (flow?.kind === "out") return <CheckOutFlow reliever={r} open={flow.open} onClose={closeFlow} onDone={reload} />;
+  if (flow?.kind === "bank") return <AddBankFlow reliever={r} onClose={closeFlow} onDone={reload} />;
 
   return (
     <div className="tabs-page">
@@ -199,6 +200,7 @@ export function Main({ mobile, onSignOut, joinIntent = false }: { mobile: string
           onInstall={() => void startInstall()}
           onCheckIn={() => setFlow({ kind: "in" })}
           onCheckOut={() => open && setFlow({ kind: "out", open })}
+          onAddBank={() => setFlow({ kind: "bank" })}
           onTab={setTab}
         />
       )}
