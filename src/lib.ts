@@ -35,6 +35,37 @@ export async function getFix(): Promise<Fix> {
   }
 }
 
+/**
+ * For listing nearby sites (2026-11-17): a first fix worse than `goodM` (indoors, cold GPS — a
+ * ±98 m reading on a reliever's phone) keeps listening for up to `waitMs` and returns the best
+ * reading seen. `onImproving` is called once when it starts waiting, for a "getting a better
+ * location" line. Never slower than getFix + waitMs; never worse than getFix.
+ */
+export async function getBestFix(onImproving?: () => void, goodM = LOW_ACCURACY_M, waitMs = 15_000): Promise<Fix> {
+  const first = await getFix();
+  if (first.acc <= goodM || !navigator.geolocation?.watchPosition) return first;
+  onImproving?.();
+  return new Promise<Fix>((resolve) => {
+    let best = first;
+    let id: number | null = null;
+    const finish = () => {
+      if (id != null) navigator.geolocation.clearWatch(id);
+      clearTimeout(timer);
+      resolve(best);
+    };
+    const timer = setTimeout(finish, waitMs);
+    id = navigator.geolocation.watchPosition(
+      (p) => {
+        const acc = Math.round(p.coords.accuracy);
+        if (acc < best.acc) best = { lat: p.coords.latitude, lng: p.coords.longitude, acc, at: Date.now(), approx: false };
+        if (best.acc <= goodM) finish();
+      },
+      () => finish(),
+      { enableHighAccuracy: true, maximumAge: 0, timeout: waitMs },
+    );
+  });
+}
+
 /** How good a GPS fix is, for the colour of the hint. */
 export function accuracyTone(acc: number): "good" | "ok" | "weak" {
   return acc <= 20 ? "good" : acc <= 50 ? "ok" : "weak";

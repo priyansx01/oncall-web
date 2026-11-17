@@ -18,6 +18,7 @@ export function Button({
   onClick,
   icon,
   small,
+  softDisabled,
 }: {
   children: ReactNode;
   variant?: BtnVariant;
@@ -26,9 +27,11 @@ export function Button({
   onClick?: () => void;
   icon?: ReactNode;
   small?: boolean;
+  /** Looks disabled but still takes the tap — used to show the person what is missing. */
+  softDisabled?: boolean;
 }) {
   return (
-    <button className={`btn ${variant}${small ? " small" : ""}`} disabled={disabled || loading} onClick={onClick}>
+    <button className={`btn ${variant}${small ? " small" : ""}${softDisabled ? " soft-disabled" : ""}`} disabled={disabled || loading} onClick={onClick}>
       {loading ? <Spinner dark={variant === "secondary" || variant === "ghost"} /> : icon}
       <span>{children}</span>
     </button>

@@ -3,7 +3,7 @@ import { IoArrowBack, IoBusinessOutline, IoCheckmark, IoClose, IoHelpCircleOutli
 import { useLang } from "../i18n";
 import { useBack } from "../shell";
 import { api, ApiError, type Attendance, type Me, type Reliever, type Site } from "../api";
-import { FAR_FROM_SITE_M, PHOTO_MAX_AGE_MS, distanceM, fmtDist, fmtTime, getFix, message, type Fix } from "../lib";
+import { FAR_FROM_SITE_M, PHOTO_MAX_AGE_MS, distanceM, fmtDist, fmtTime, getBestFix, message, type Fix } from "../lib";
 import { Button, Card, ErrorBanner, FlowHeader, IconCircle, KeyValueRow, LocationSummary, Spinner, Stepper } from "../ui";
 import { AccuracyHint, PhotoStep, stampLines, usePhoto } from "./PhotoStep";
 import { useUploadOnce } from "./useUploadOnce";
@@ -26,6 +26,12 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
   const [searched, setSearched] = useState(false);
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
+  // Weak first fix: waiting a few seconds for a better one before listing sites.
+  const [improving, setImproving] = useState(false);
+  // The name box / search box the footer button points to when something is missing.
+  const nameRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [attention, setAttention] = useState<"name" | "search" | null>(null);
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState<Attendance | null>(null);
@@ -49,7 +55,8 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
     setLocating(true);
     setLocError(null);
     try {
-      const f = await getFix();
+      const f = await getBestFix(() => setImproving(true));
+      setImproving(false);
       setFix(f);
       const list = await api.sitesNear(f.lat, f.lng);
       setSites(list);
@@ -72,9 +79,29 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
     } catch (e) {
       setLocError(message(e, t("err_sites")));
     } finally {
+      setImproving(false);
       setLocating(false);
     }
   }, [t]);
+
+  /** Bring a field into view (it can sit below the screen, under the footer button) and point at it. */
+  const pointAt = useCallback((which: "name" | "search", focus: boolean) => {
+    const el = which === "name" ? nameRef.current : searchRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (focus) el.focus({ preventScroll: true });
+    setAttention(which);
+    window.setTimeout(() => setAttention((a) => (a === which ? null : a)), 2600);
+  }, []);
+
+  // "Not in list" switched on (by itself when nothing is near, or by a tap): the name box is
+  // below it — scroll it into view, so nobody is left looking at a grey button (2026-11-17,
+  // a reliever stuck on "write the site name" with the box off-screen).
+  useEffect(() => {
+    if (!unlisted || step !== 0) return;
+    const id = window.setTimeout(() => pointAt("name", !autoUnlisted.current), 150);
+    return () => window.clearTimeout(id);
+  }, [unlisted, step, pointAt]);
 
   useEffect(() => {
     void locate();
@@ -182,7 +209,7 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
             </Card>
 
             <LocationSummary
-              title={fix ? t("location_accuracy_value", { m: fix.acc }) : locating ? t("finding_location") : t("location_not_found")}
+              title={improving ? t("improving_location") : fix ? t("location_accuracy_value", { m: fix.acc }) : locating ? t("finding_location") : t("location_not_found")}
               sub={fix ? t("updated_at", { time: fmtTime(new Date(fix.at).toISOString()) }) : t("gps_on")}
             />
             {fix && <AccuracyHint fix={fix} />}
@@ -201,7 +228,16 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
                 <span>{t("finding_sites")}</span>
               </div>
             )}
-            {sites && sites.length === 0 && <Card className="quiet">{t("no_sites")}</Card>}
+            {sites && sites.length === 0 && (
+              <Card className="quiet no-sites">
+                <span>{searched ? t("no_search_results") : t("no_sites")}</span>
+                {!searched && (
+                  <button className="text-btn" onClick={() => pointAt("search", true)}>
+                    <IoSearch size={15} /> {t("search_by_name")}
+                  </button>
+                )}
+              </Card>
+            )}
 
             <div className="site-list">
               {(sites ?? []).map((s) => {
@@ -228,9 +264,9 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
               })}
             </div>
 
-            <div className="search-box">
+            <div className={`search-box${attention === "search" ? " attention" : ""}`}>
               <IoSearch size={18} />
-              <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void search()} placeholder={t("search_placeholder")} />
+              <input ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void search()} placeholder={t("search_placeholder")} />
               <button className="text-btn" onClick={() => void search()} disabled={locating || q.trim().length < 2}>
                 {t("search")}
               </button>
@@ -270,8 +306,9 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
                 <p>{t("unlisted_body")}</p>
                 <label className="field">
                   <span>{t("unlisted_name_label")}</span>
-                  <div className="input-wrap">
+                  <div className={`input-wrap${attention === "name" ? " attention" : ""}`}>
                     <input
+                      ref={nameRef}
                       value={reported}
                       maxLength={120}
                       placeholder={t("unlisted_name_placeholder")}
@@ -337,7 +374,10 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
 
       <div className="flow-footer">
         {step === 0 && (
-          <Button disabled={!ready} onClick={() => setStep(1)}>
+          <Button
+            softDisabled={!ready}
+            onClick={() => (ready ? setStep(1) : pointAt(unlisted ? "name" : "search", true))}
+          >
             {unlisted ? (ready ? t("continue_at", { site: reportedName }) : t("unlisted_err_name")) : site ? t("continue_at", { site: site.siteName }) : t("pick_site")}
           </Button>
         )}
