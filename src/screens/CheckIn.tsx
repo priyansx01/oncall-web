@@ -154,7 +154,9 @@ export function CheckInFlow({ reliever, onClose, onDone }: { reliever: Reliever;
           return;
         }
       }
-      setSubmitError(message(e, t("err_check_in")));
+      // One check-in a day: say it in their language (the server's text is English).
+      if (e instanceof ApiError && e.data?.code === "ONE_CHECKIN_A_DAY") setSubmitError(t("err_one_checkin"));
+      else setSubmitError(message(e, t("err_check_in")));
     } finally {
       setBusy(false);
     }

@@ -73,6 +73,8 @@ export type Attendance = {
   reportedSite?: string | null;
   /** No check-out: closed at the next check-in (or open too long). Ops review the day. */
   checkoutMissed?: boolean;
+  /** The open day only: a full day in hours — checking out before it gets the early warning. */
+  dutyHours?: number | null;
 };
 
 export type MonthTotals = { month: string; days: number; minutes: number };

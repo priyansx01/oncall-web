@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { IoArrowForward, IoBusinessOutline, IoChevronForward, IoDownloadOutline, IoLogOutOutline, IoTimeOutline, IoCalendarOutline, IoStatsChartOutline, IoWarningOutline } from "react-icons/io5";
+import { IoArrowForward, IoBusinessOutline, IoCheckmarkDone, IoChevronForward, IoDownloadOutline, IoLogOutOutline, IoTimeOutline, IoCalendarOutline, IoStatsChartOutline, IoWarningOutline } from "react-icons/io5";
 import type { Me } from "../api";
 import type { InstallState } from "../install";
-import { fmtDay, fmtMins, fmtTime, greeting, initials, minutesWorked, statusOf, totals } from "../lib";
+import { doneToday, earlyByMinutes, fmtDay, fmtMins, fmtTime, greeting, initials, minutesWorked, statusOf, totals } from "../lib";
 import { useLang } from "../i18n";
 import { Brand, Button, Card, IconCircle, SectionHeader, Sheet, Shell, StatusChip } from "../ui";
 import { LanguageButton } from "./LanguagePicker";
@@ -35,6 +35,9 @@ export function HomeTab({
   const tot = useMemo(() => totals(me.recent ?? [], now, open, me.monthTotals), [me.recent, now, open, me.monthTotals]);
   // The latest day had no check-out: say so, so it isn't a surprise when it isn't paid as is.
   const missed = !open && me.recent[0]?.checkoutMissed ? me.recent[0] : null;
+  // One check-in a day: once today is checked out, the card says so instead of offering another.
+  const done = doneToday(me.recent ?? [], open);
+  const early = earlyByMinutes(open, now);
 
   return (
     <Shell
@@ -88,17 +91,32 @@ export function HomeTab({
         </button>
       )}
 
-      <button className={`clock-card${open ? " working" : ""}`} onClick={() => (open ? setConfirmOut(true) : onCheckIn())}>
-        <div className="clock-icon">{open ? <IoLogOutOutline size={26} /> : <IoTimeOutline size={28} />}</div>
-        <div className="grow">
-          <div className="clock-label">{t("clock_label")}</div>
-          <div className="clock-title">{open ? t("working_for", { time: fmtMins(minutesWorked(open, now)) }) : t("tap_check_in")}</div>
-          <div className="clock-sub">{open ? t("since_tap_out", { time: fmtTime(open.checkInAt) }) : t("check_in_sub")}</div>
+      {done ? (
+        <div className="clock-card done" role="status">
+          <div className="clock-icon">
+            <IoCheckmarkDone size={26} />
+          </div>
+          <div className="grow">
+            <div className="clock-label">{t("clock_label")}</div>
+            <div className="clock-title">{t("done_today")}</div>
+            <div className="clock-sub">
+              {done.checkOutAt ? t("done_today_sub", { time: fmtTime(done.checkOutAt) }) : t("done_today_sub_missed")}
+            </div>
+          </div>
         </div>
-        <div className="arrow-circle">
-          <IoArrowForward size={18} />
-        </div>
-      </button>
+      ) : (
+        <button className={`clock-card${open ? " working" : ""}`} onClick={() => (open ? setConfirmOut(true) : onCheckIn())}>
+          <div className="clock-icon">{open ? <IoLogOutOutline size={26} /> : <IoTimeOutline size={28} />}</div>
+          <div className="grow">
+            <div className="clock-label">{t("clock_label")}</div>
+            <div className="clock-title">{open ? t("working_for", { time: fmtMins(minutesWorked(open, now)) }) : t("tap_check_in")}</div>
+            <div className="clock-sub">{open ? t("since_tap_out", { time: fmtTime(open.checkInAt) }) : t("check_in_sub")}</div>
+          </div>
+          <div className="arrow-circle">
+            <IoArrowForward size={18} />
+          </div>
+        </button>
+      )}
 
       {missed && (
         <Card className="warn-card">
@@ -194,14 +212,19 @@ export function HomeTab({
       <Sheet open={confirmOut} onClose={() => setConfirmOut(false)}>
         <div className="sheet-head">
           <IconCircle tone="danger" size={64}>
-            <IoLogOutOutline size={30} />
+            {early ? <IoWarningOutline size={30} /> : <IoLogOutOutline size={30} />}
           </IconCircle>
-          <h3>{t("end_work_title")}</h3>
-          <p className="muted">{t("end_work_body", { time: open ? fmtMins(minutesWorked(open, now)) : "", site: open?.siteName ?? "" })}</p>
+          <h3>{early ? t("early_out_title") : t("end_work_title")}</h3>
+          {early ? (
+            <p className="muted">{t("early_out_body", { time: fmtMins(early.worked), duty: fmtMins(early.duty) })}</p>
+          ) : (
+            <p className="muted">{t("end_work_body", { time: open ? fmtMins(minutesWorked(open, now)) : "", site: open?.siteName ?? "" })}</p>
+          )}
         </div>
+        {/* Leaving early: "keep working" is the main button, so a mis-tap doesn't end the day. */}
         <div className="sheet-actions">
-          <Button variant="secondary" onClick={() => setConfirmOut(false)}>
-            {t("not_yet")}
+          <Button variant={early ? "primary" : "secondary"} onClick={() => setConfirmOut(false)}>
+            {early ? t("keep_working") : t("not_yet")}
           </Button>
           <Button
             variant="danger"
@@ -210,7 +233,7 @@ export function HomeTab({
               onCheckOut();
             }}
           >
-            {t("yes_check_out")}
+            {early ? t("check_out_early") : t("yes_check_out")}
           </Button>
         </div>
       </Sheet>

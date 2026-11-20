@@ -309,5 +309,13 @@
   "addbank_body": "On-call pay now goes only to a bank account. Add your account and a photo of your passbook or cancelled cheque to get paid.",
   "addbank_prompt": "Add your bank account and cheque photo to get paid",
   "addbank_prompt_sub": "Pay is held until both are added",
-  "addbank_change_hr": "To change this bank account, please contact HR."
+  "addbank_change_hr": "To change this bank account, please contact HR.",
+  "early_out_title": "Leaving early?",
+  "early_out_body": "You have worked {time} — a full day is {duty}. If you check out now, you are paid only for the time worked, and you can't check in again today.",
+  "keep_working": "Keep working",
+  "check_out_early": "Check out early",
+  "done_today": "Done for today",
+  "done_today_sub": "Checked out at {time} · you can check in again tomorrow",
+  "done_today_sub_missed": "Day closed · you can check in again tomorrow",
+  "err_one_checkin": "You have already checked in today. Only one check-in is allowed in a day — if you checked out by mistake, ask the operations team to correct your check-out time."
 }

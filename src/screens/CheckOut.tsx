@@ -3,7 +3,7 @@ import { IoArrowBack, IoCheckmarkDone, IoClose, IoWarningOutline } from "react-i
 import { useLang } from "../i18n";
 import { useBack } from "../shell";
 import { api, ApiError, type Attendance, type Me, type Reliever } from "../api";
-import { PHOTO_MAX_AGE_MS, fmtMins, fmtTime, message, minutesWorked } from "../lib";
+import { PHOTO_MAX_AGE_MS, earlyByMinutes, fmtMins, fmtTime, message, minutesWorked } from "../lib";
 import { Button, Card, ErrorBanner, FlowHeader, IconCircle, KeyValueRow, Stepper } from "../ui";
 import { PhotoStep, stampLines, usePhoto } from "./PhotoStep";
 import { useUploadOnce } from "./useUploadOnce";
@@ -118,6 +118,15 @@ export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Re
               <KeyValueRow label={t("worked")} value={fmtMins(minutesWorked({ checkInAt: open.checkInAt, checkOutAt: new Date(shot.photo.fix.at).toISOString() }))} />
               <KeyValueRow label={t("location_accuracy")} value={`±${shot.photo.fix.acc} m`} />
             </Card>
+            {(() => {
+              const early = earlyByMinutes(open, shot.photo.fix.at);
+              return early ? (
+                <Card className="warn-card">
+                  <IoWarningOutline size={20} />
+                  <span>{t("early_out_body", { time: fmtMins(early.worked), duty: fmtMins(early.duty) })}</span>
+                </Card>
+              ) : null;
+            })()}
             {shot.photo.source === "file" && (
               <Card className="warn-card">
                 <IoWarningOutline size={20} />
@@ -136,7 +145,7 @@ export function CheckOutFlow({ reliever, open, onClose, onDone }: { reliever: Re
           </Button>
         ) : (
           <Button variant="danger" loading={busy} onClick={() => void submit()}>
-            {t("submit_check_out")}
+            {shot.photo && earlyByMinutes(open, shot.photo.fix.at) ? t("check_out_early") : t("submit_check_out")}
           </Button>
         )}
       </div>

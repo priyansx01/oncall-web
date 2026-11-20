@@ -660,6 +660,25 @@ p {
   margin-right: 14px;
   flex: none;
 }
+.clock-card.done {
+  background: var(--green-light);
+  color: var(--ink);
+  box-shadow: none;
+  border: 1px solid var(--icon-border);
+}
+.clock-card.done:active {
+  transform: none;
+}
+.clock-card.done .clock-icon {
+  background: #fff;
+  color: var(--green);
+}
+.clock-card.done .clock-label {
+  color: var(--green);
+}
+.clock-card.done .clock-sub {
+  color: var(--muted);
+}
 .clock-card.working .clock-icon {
   background: rgba(94, 224, 160, 0.22);
 }

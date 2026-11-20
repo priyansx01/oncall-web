@@ -141,6 +141,21 @@ export function totals(rows: Attendance[], now: number, open: Attendance | null 
   return { today: sum(today) + live, week: sum(weekStart) + live, month: monthClosed + live };
 }
 
+/** Minutes still short of a full day (null when the day's duty isn't known or it is done). */
+export function earlyByMinutes(open: Attendance | null, now = Date.now()): { worked: number; duty: number } | null {
+  if (!open?.dutyHours || !(open.dutyHours > 0)) return null;
+  const duty = Math.round(open.dutyHours * 60);
+  const worked = minutesWorked(open, now);
+  return worked < duty ? { worked, duty } : null;
+}
+
+/** Checked out today already (one check-in a day): that day, else null. */
+export function doneToday(rows: Attendance[], open: Attendance | null): Attendance | null {
+  if (open) return null;
+  const today = istDate();
+  return rows.find((a) => a.date === today && a.status !== "rejected" && (a.checkOutAt || a.checkoutMissed)) ?? null;
+}
+
 /** Today's timeline: today's days plus the day still open, even if it started yesterday. */
 export function todaysDays(rows: Attendance[], open: Attendance | null): Attendance[] {
   const today = istDate();
